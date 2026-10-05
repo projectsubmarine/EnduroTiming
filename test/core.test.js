@@ -143,3 +143,21 @@ test('toCsv: BOM・エスケープ', () => {
   const s = C.toCsv([['a', 'b,c'], ['"x"', '']]);
   assert.equal(s, '﻿a,"b,c"\r\n"""x""",');
 });
+
+test('parseCsv: 基本的なCSVを解析する（LF/CRLF混在）', () => {
+  assert.deepEqual(C.parseCsv('a,b,c\n1,2,3\r\nx,y,z'), [['a', 'b', 'c'], ['1', '2', '3'], ['x', 'y', 'z']]);
+});
+
+test('parseCsv: 引用符で囲まれたカンマ・改行・エスケープ（""→"）', () => {
+  const text = '"佐藤,太郎","1\n2","say ""hi"""\r\nx,y,z';
+  assert.deepEqual(C.parseCsv(text), [['佐藤,太郎', '1\n2', 'say "hi"'], ['x', 'y', 'z']]);
+});
+
+test('parseCsv: 先頭のBOM・完全に空の行を無視。末尾の改行は空行を作らない', () => {
+  assert.deepEqual(C.parseCsv('﻿a,b\n\n1,2\n'), [['a', 'b'], ['1', '2']]);
+});
+
+test('parseCsv: 空文字・空行のみは空配列を返す', () => {
+  assert.deepEqual(C.parseCsv(''), []);
+  assert.deepEqual(C.parseCsv('\n\n'), []);
+});

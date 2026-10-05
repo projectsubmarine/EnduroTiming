@@ -197,8 +197,34 @@
   const csvCell = v => { v = String(v ?? ''); return /[",\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
   const toCsv = rows => '﻿' + rows.map(r => r.map(csvCell).join(',')).join('\r\n');
 
+  /**
+   * CSV文字列を行×列の文字列配列に変換する（RFC4180相当）。
+   * 引用符 "…" によるエスケープ（内部の""は"1つ）、カンマ・改行を含むフィールド、CRLF/LFどちらも対応。
+   * 先頭のBOMは除去。完全に空の行（内容が1つもない行）はスキップする。
+   */
+  function parseCsv(text) {
+    const s = String(text ?? '').replace(/^﻿/, '');
+    const rows = [];
+    let row = [], field = '', inQ = false;
+    const pushField = () => { row.push(field); field = ''; };
+    const pushRow = () => { pushField(); if (row.length > 1 || row[0] !== '') rows.push(row); row = []; };
+    for (let i = 0; i < s.length; i++) {
+      const c = s[i];
+      if (inQ) {
+        if (c === '"') { if (s[i + 1] === '"') { field += '"'; i++; } else inQ = false; }
+        else field += c;
+      } else if (c === '"') inQ = true;
+      else if (c === ',') pushField();
+      else if (c === '\n') pushRow();
+      else if (c === '\r') { if (s[i + 1] === '\n') i++; pushRow(); }
+      else field += c;
+    }
+    if (field !== '' || row.length) pushRow();
+    return rows;
+  }
+
   const Core = {
-    DAY_MS, NOCLS, STATUS, nat, z2h, parseClock, fmtClock, fmtClockFull, fmtDur, elapsed, compute, csvCell, toCsv,
+    DAY_MS, NOCLS, STATUS, nat, z2h, parseClock, fmtClock, fmtClockFull, fmtDur, elapsed, compute, csvCell, toCsv, parseCsv,
     clsComparator, isValidBib, bibRange, classForBib, nextBibInClass,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = Core;

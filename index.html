@@ -67,9 +67,23 @@
   <div class="card">
     <div class="btns" style="margin-bottom:10px">
       <strong id="rCount"></strong>
+      <button class="b" type="button" id="btnCsvImport">CSVから取り込む</button>
+      <input type="file" id="csvFileIn" accept=".csv,text/csv" hidden>
       <input id="rFilter" placeholder="検索（BIB・氏名・クラス・ICタグ）" style="margin-left:auto;width:220px">
     </div>
     <div class="tw"><table id="rTable"></table></div>
+  </div>
+  <div class="card" id="csvImportPanel" hidden>
+    <h2>CSV取り込み：列の対応付け</h2>
+    <p class="hint">各列が何の項目か、上の見出し行で選んでください（「氏名」は必須）。BIBナンバー・参加クラスはここでは設定しません。取り込み後、一覧の「編集」から設定してください。</p>
+    <label style="flex-direction:row;align-items:center;gap:6px;display:inline-flex">
+      <input type="checkbox" id="csv_header" checked> 先頭行はヘッダー行（データとして取り込まない）
+    </label>
+    <div class="tw" style="margin-top:10px"><table id="csvMapTable"></table></div>
+    <div class="btns" style="margin-top:12px">
+      <button class="b p" type="button" id="btnCsvImportConfirm">この内容で取り込む</button>
+      <button class="b" type="button" id="btnCsvImportCancel">キャンセル</button>
+    </div>
   </div>
 </section>
 

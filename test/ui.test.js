@@ -196,6 +196,46 @@ test('クラスの出走順：①の参加クラス設定（結果表の表示�
   assert.deepEqual(ui.errors, []);
 });
 
+test('CSV取り込み：列の対応付けで氏名・読み仮名を取り込む（BIB・クラスは未設定のまま）', { skip: !JSDOM && 'jsdom 未インストール（npm install）' }, () => {
+  const ui = open();
+  const rows = [
+    ['氏名', 'フリガナ', 'メモ'],
+    ['佐藤 太郎', 'サトウ タロウ', 'A'],
+    ['', 'カラ', ''],          // 氏名が空の行 → スキップされる
+    ['鈴木 次郎', 'スズキ ジロウ', 'B'],
+  ];
+  ui.w.renderCsvImportPanel(rows);
+  assert.equal(ui.$('#csvImportPanel').hidden, false);
+  const sels = [...ui.w.document.querySelectorAll('#csvMapTable select')];
+  assert.deepEqual(sels.map(s => s.value), ['name', 'kana', 'ignore']); // 見出しから自動推測
+
+  sels[2].value = 'note'; // メモ列も特記事項として取り込む
+  ui.$('#btnCsvImportConfirm').click();
+
+  const S = ui.state();
+  assert.equal(S.riders.length, 2);
+  assert.deepEqual(S.riders.map(r => [r.name, r.kana, r.note, r.bib, r.cls]), [
+    ['佐藤 太郎', 'サトウ タロウ', 'A', '', ''],
+    ['鈴木 次郎', 'スズキ ジロウ', 'B', '', ''],
+  ]);
+  assert.ok(ui.alerts.at(-1).includes('2件を取り込みました'));
+  assert.ok(ui.alerts.at(-1).includes('1行はスキップしました'));
+  assert.equal(ui.$('#csvImportPanel').hidden, true);
+  assert.deepEqual(ui.errors, []);
+});
+
+test('CSV取り込み：「氏名」列を選ばないと取り込めない', { skip: !JSDOM && 'jsdom 未インストール（npm install）' }, () => {
+  const ui = open();
+  ui.w.save(); // state()がnullにならないよう、空データを一度保存しておく
+  ui.w.renderCsvImportPanel([['A', 'B'], ['1', '2']]);
+  const sels = [...ui.w.document.querySelectorAll('#csvMapTable select')];
+  sels.forEach(s => s.value = 'ignore'); // 氏名を選ばない
+  ui.$('#btnCsvImportConfirm').click();
+  assert.equal(ui.state().riders.length, 0);
+  assert.ok(ui.alerts.at(-1).includes('氏名'));
+  assert.deepEqual(ui.errors, []);
+});
+
 test('サンプルデータ投入でエラーが出ない', { skip: !JSDOM && 'jsdom 未インストール（npm install）' }, () => {
   const ui = open();
   ui.$('#btnSample').click();

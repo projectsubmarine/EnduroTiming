@@ -42,7 +42,8 @@ function setStatus(t){$('#status').textContent=t;}
 
 /* ---------- 時刻 ---------- */
 const riderOf=u=>S.riders.find(r=>r.uid===u);
-const riderByBib=b=>{b=z2h(b);return S.riders.find(r=>String(r.bib)===b);};
+// BIB未設定（CSV取り込み直後など）のライダーが複数いても、空欄入力では一致させない
+const riderByBib=b=>{b=z2h(b);if(!b)return undefined;return S.riders.find(r=>String(r.bib)===b);};
 
 /* ---------- タブ ---------- */
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
@@ -186,12 +187,76 @@ function renderRiders(){
     .filter(r=>!q||[r.bib,r.name,r.kana,r.cls,r.tag].join(' ').toLowerCase().includes(q));
   $('#rCount').textContent=`登録 ${S.riders.length} 名`;
   $('#rTable').innerHTML=`<tr><th>BIB</th><th>氏名</th><th>読み仮名</th><th>クラス</th><th>ICタグ</th><th>特記事項</th><th class="c">記録数</th><th class="noprint"></th></tr>`+
-    list.map(r=>`<tr><td><b>${esc(r.bib)}</b></td><td>${esc(r.name)}</td><td>${esc(r.kana)}</td><td>${esc(r.cls)}</td><td>${esc(r.tag)}</td>
+    list.map(r=>`<tr><td><b>${r.bib?esc(r.bib):'<span class="muted">未設定</span>'}</b></td><td>${esc(r.name)}</td><td>${esc(r.kana)}</td>
+      <td>${r.cls?esc(r.cls):'<span class="muted">未設定</span>'}</td><td>${esc(r.tag)}</td>
       <td class="note">${esc(r.note)}</td><td class="c">${S.runs.filter(x=>x.rider===r.uid).length}</td>
       <td class="noprint"><button class="b s" onclick="editR('${r.uid}')">編集</button> <button class="b s d" onclick="delR('${r.uid}')">削除</button></td></tr>`).join('')+
     (list.length?'':`<tr><td colspan="8" class="muted">ライダーはまだ登録されていません</td></tr>`);
 }
 $('#rFilter').oninput=renderRiders;
+
+/* ---------- CSVからライダーを取り込む（氏名・読み仮名。BIB・クラスは未設定のまま追加し、後で編集する） ---------- */
+let csvRows=null; // 列の対応付け確定前の、取り込み待ちのCSV（行×列の文字列配列）
+$('#btnCsvImport').onclick=()=>$('#csvFileIn').click();
+$('#csvFileIn').onchange=e=>{
+  const f=e.target.files[0];if(!f)return;
+  const rd=new FileReader();
+  rd.onload=()=>{
+    const buf=rd.result;
+    let text=new TextDecoder('utf-8').decode(buf);
+    if(text.includes('�')){ // UTF-8として復号できない＝Shift_JIS等のExcel書き出しCSVと推定
+      try{text=new TextDecoder('shift_jis').decode(buf);}catch(_){/* 対応していない場合はUTF-8のまま */}
+    }
+    const rows=Core.parseCsv(text).filter(r=>r.some(c=>String(c).trim()!==''));
+    if(!rows.length){alert('CSVに読み込めるデータがありません');return;}
+    renderCsvImportPanel(rows);
+  };
+  rd.onerror=()=>alert('ファイルを読み込めませんでした');
+  rd.readAsArrayBuffer(f);
+  e.target.value='';
+};
+function guessCsvCol(rows,i){
+  const h=String(rows[0]?.[i]??'');
+  if(/氏名|名前|なまえ/.test(h))return 'name';
+  if(/フリガナ|ふりがな|カナ|かな|読み/.test(h))return 'kana';
+  return 'ignore';
+}
+function renderCsvImportPanel(rows){
+  csvRows=rows;
+  const ncols=Math.max(...rows.map(r=>r.length));
+  const opt=v=>`<option value="${v}">`;
+  const selHtml=i=>`<select data-col="${i}">${opt('ignore')}（使用しない）</option>${opt('name')}氏名</option>${opt('kana')}読み仮名</option>${opt('note')}特記事項</option></select>`;
+  const head=`<tr>${Array.from({length:ncols},(_,i)=>`<th>${selHtml(i)}</th>`).join('')}</tr>`;
+  const body=rows.slice(0,6).map(r=>`<tr>${Array.from({length:ncols},(_,i)=>`<td>${esc(r[i]??'')}</td>`).join('')}</tr>`).join('')+
+    (rows.length>6?`<tr><td colspan="${ncols}" class="muted">…他 ${rows.length-6} 行</td></tr>`:'');
+  $('#csvMapTable').innerHTML=head+body;
+  [...document.querySelectorAll('#csvMapTable select')].forEach((sel,i)=>{sel.value=guessCsvCol(rows,i);});
+  $('#csvImportPanel').hidden=false;
+  window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'});
+}
+$('#btnCsvImportCancel').onclick=()=>{$('#csvImportPanel').hidden=true;csvRows=null;};
+$('#btnCsvImportConfirm').onclick=()=>{
+  const mapping=[...document.querySelectorAll('#csvMapTable select')].map(s=>s.value);
+  const nameIdx=mapping.indexOf('name');
+  if(nameIdx===-1){alert('「氏名」の列を選んでください');return;}
+  const kanaIdx=mapping.indexOf('kana');
+  const noteIdxs=mapping.reduce((a,m,i)=>m==='note'?[...a,i]:a,[]);
+  const dataRows=$('#csv_header').checked?csvRows.slice(1):csvRows;
+  if(!confirm(`${dataRows.length}件を取り込みます。よろしいですか？`))return;
+  let added=0,skipped=0;
+  dataRows.forEach(r=>{
+    const name=(r[nameIdx]??'').trim();
+    if(!name){skipped++;return;}
+    const kana=kanaIdx>=0?(r[kanaIdx]??'').trim():'';
+    const note=noteIdxs.map(i=>(r[i]??'').trim()).filter(Boolean).join(' / ');
+    S.riders.push({uid:uid(),bib:'',name,kana,cls:'',tag:'',note});
+    added++;
+  });
+  syncStartClassOrder();syncStartOrder();save();renderAll();
+  $('#csvImportPanel').hidden=true;csvRows=null;
+  alert(`${added}件を取り込みました。BIBナンバー・参加クラスは未設定です。一覧の「編集」から設定してください。`+
+    (skipped?`\n氏名が空の${skipped}行はスキップしました。`:''));
+};
 
 /* ---------- ② スタートリスト ---------- */
 // 出走順はS.startOrder（riders.uidの配列）で管理。ライダーの登録・削除に合わせて自動で追加／除外する。
