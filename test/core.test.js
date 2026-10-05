@@ -76,6 +76,25 @@ test('compute: クラス別順位と未設定クラス', () => {
   assert.equal(R.byClass[C.NOCLS][0].clsR, 1);
 });
 
+test('compute: クラス表示順はS.classes（クラス設定の並び）に従う', () => {
+  const st = state();
+  st.classes = ['IB', 'IA'];
+  const R = C.compute(st);
+  assert.deepEqual(R.classes, ['IB', 'IA', C.NOCLS]); // 設定順→未登録クラスはnat順→NOCLSは最後
+});
+
+test('compute: 旧データ（classesなし）はnat順のまま（後方互換）', () => {
+  const st = state();
+  delete st.classes;
+  const R = C.compute(st);
+  assert.deepEqual(R.classes, ['IA', 'IB', C.NOCLS]);
+});
+
+test('clsComparator: 未定義クラスはnat順で設定済みクラスの後ろ', () => {
+  const cmp = C.clsComparator(['B', 'A']);
+  assert.deepEqual(['Z', 'A', 'B', C.NOCLS].sort(cmp), ['B', 'A', 'Z', C.NOCLS]);
+});
+
 test('toCsv: BOM・エスケープ', () => {
   const s = C.toCsv([['a', 'b,c'], ['"x"', '']]);
   assert.equal(s, '﻿a,"b,c"\r\n"""x""",');

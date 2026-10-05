@@ -12,11 +12,12 @@
 
 ## 構成
 ```
-index.html      画面の骨組み（タブ: ①ライダー登録 ②タイム入力 ③結果・順位 / データ管理）
+index.html      画面の骨組み（タブ: ①ライダー登録 ②スタートリスト ③タイム入力 ④結果・順位 / データ管理）
 css/style.css   スタイル（印刷用 @media print を含む。A4横）
 js/core.js      計算ロジック（DOMに依存しない純粋関数）。ブラウザでは window.Core、Nodeでは require
 js/app.js       画面処理。状態は変数 S に集約 → 変更したら save() → render*()
 test/           node:test のテスト。core.test.js は依存なし、ui.test.js は jsdom を使う
+docs/manual.md  操作マニュアル（下書き。詳細・スクリーンショットは今後追記）
 ```
 新しい計算・変換処理（CSV取り込みなど）は **core.js に置いてテストを書く**。app.js はDOMとのつなぎだけにする。
 
@@ -28,16 +29,22 @@ test/           node:test のテスト。core.test.js は依存なし、ui.test.
 ```js
 S = {
   version: 1,
-  event:    { name, date },
-  settings: { prec },            // タイム表示の小数桁 0〜3（表示のみ切り捨て。計算はms）
-  riders: [{ uid, id, bib, name, kana, cls, note }],
-  runs:   [{ uid, rider /*riders.uid*/, sec, start, goal, status, note }],
+  event:     { name, date },
+  settings:  { prec },            // タイム表示の小数桁 0〜3（表示のみ切り捨て。計算はms）
+  classes:   ["IA", "IB", ...],   // イベントごとの参加クラス（①の「参加クラス設定」で登録。並び順＝結果表・スタートリストの表示順）
+  riders:    [{ uid, id, bib, name, kana, cls, tag, note }],
+  startOrder:[uid, uid, ...],     // ②スタートリストの出走順（riders.uidの配列）
+  runs:      [{ uid, rider /*riders.uid*/, sec, start, goal, status, note }],
 }
 ```
 - 時刻 `start` / `goal` は **0時からのミリ秒（整数）**。Dateは使わない。`null`＝未入力。
 - `status`: `OK`（完走）/ `DNF` / `DNS` / `DSQ`
 - runs は rider の `uid` で紐づける（BIBを変更しても記録が外れないように）。
 - 1ライダー×1セクション＝1レコード。同じBIB＋セクションを再入力した場合、空欄の項目は既存の値を残す（スタートとゴールを別々に入力できる）。
+- `riders[].cls` はクラス名の文字列（`classes` 配列の値と一致させる）。未設定は空文字列。
+- `riders[].tag` は任意の文字列（将来のRFID／ICタグ用の拡張フィールド。現時点では重複チェックのみで、計測処理には使っていない）。
+- `classes` / `startOrder` が無い旧バックアップは、読み込み時に `app.js` の `migrate()` が補完する（`classes` は riders の `cls` から自動生成、`startOrder` は登録順）。構造の追加のみなので `version` は上げていない。
+- `startOrder` はライダー登録・削除に合わせて自動で追加／除外される（新規は末尾に追加）。既定の並び順は「クラス（`classes` の並び）→ BIBの自然順」。スタートリスト画面の「並び順を初期化」でこの既定順に戻せる。
 
 ## 時刻・タイムのルール
 - 入力形式：`10:05`, `10:05:23`, `10:05:23.45`, `100523`, `100523.45`（全角も可）。
@@ -56,7 +63,9 @@ S = {
 - 計測システムが出力するCSVの取り込み（列の対応付けを画面で設定）。出力形式はユーザーが確認中
 - ペナルティ秒の加算、セクションごとの順位表示
 - 手書きメモからの入力をさらに速くする（BIB → 時刻を連続で入力するモード）
+- RFID等によるユニークID計測の簡略化：`riders[].tag` フィールドを拡張用に用意済み（現状は手入力・重複チェックのみ）。実際にリーダー等と連携する場合は、`tag` からBIBを引いて②タイム入力の自動入力などにつなげる想定
 - 複数端末で使いたくなったら：ローカルサーバー（Node または Python ＋ SQLite）版を検討。その場合も core.js はそのまま使えるように保つ
+- 操作マニュアル（`docs/manual.md`）の内容を大会運用に合わせて充実させる（スクリーンショット・現場での注意点など）
 
 ## 作業の約束
 - 変更後は `npm test` を通す。画面を変えたら `index.html` をブラウザで開いて確認する。

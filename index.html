@@ -15,14 +15,24 @@
 </header>
 <nav>
   <button data-tab="riders" class="on">① ライダー登録</button>
-  <button data-tab="times">② タイム入力</button>
-  <button data-tab="res">③ 結果・順位</button>
+  <button data-tab="start">② スタートリスト</button>
+  <button data-tab="times">③ タイム入力</button>
+  <button data-tab="res">④ 結果・順位</button>
   <button data-tab="data">データ管理</button>
 </nav>
 <main>
 
 <!-- ① ライダー登録 -->
 <section class="tab on" id="tab-riders">
+  <div class="card">
+    <h2>参加クラス設定</h2>
+    <p class="hint">イベントごとに参加クラスを登録してください。ここで登録したクラスが、下の「参加クラス」欄で選べるようになります（表示順は結果表・スタートリストの表示順にもなります）。</p>
+    <form id="clsForm" autocomplete="off" class="btns" style="margin-top:8px">
+      <input id="cls_name" placeholder="クラス名（例：IA, IB, ビギナー）" style="flex:1;min-width:160px">
+      <button class="b p" type="submit">クラスを追加</button>
+    </form>
+    <div class="tw" style="margin-top:10px"><table id="clsTable"></table></div>
+  </div>
   <div class="card">
     <h2 id="rFormTitle">ライダー登録</h2>
     <form id="rForm" autocomplete="off">
@@ -31,7 +41,8 @@
         <label>BIBナンバー *<input id="r_bib" required></label>
         <label>氏名 *<input id="r_name" required></label>
         <label>読み仮名<input id="r_kana"></label>
-        <label>参加クラス<input id="r_cls" list="clsList"></label>
+        <label>参加クラス<select id="r_cls"><option value="">（未設定）</option></select></label>
+        <label>ICタグID<input id="r_tag" placeholder="任意・将来のRFID用"></label>
         <label class="wide">特記事項<input id="r_note"></label>
       </div>
       <div class="btns" style="margin-top:12px">
@@ -44,13 +55,27 @@
   <div class="card">
     <div class="btns" style="margin-bottom:10px">
       <strong id="rCount"></strong>
-      <input id="rFilter" placeholder="検索（BIB・氏名・クラス）" style="margin-left:auto;width:220px">
+      <input id="rFilter" placeholder="検索（BIB・氏名・クラス・ICタグ）" style="margin-left:auto;width:220px">
     </div>
     <div class="tw"><table id="rTable"></table></div>
   </div>
 </section>
 
-<!-- ② タイム入力 -->
+<!-- ② スタートリスト -->
+<section class="tab" id="tab-start">
+  <div class="card noprint">
+    <div class="btns">
+      <strong id="sCount"></strong>
+      <button class="b" type="button" id="btnStartReset">並び順を初期化（クラス→BIB順）</button>
+      <button class="b p" type="button" id="btnStartPrint" style="margin-left:auto">印刷・PDF保存</button>
+    </div>
+    <p class="hint" style="margin-top:8px">▲▼ボタンで出走順を入れ替えられます。ライダーを登録・削除すると、一覧の末尾に自動で追加／除外されます。</p>
+  </div>
+  <div class="print-title"><h1 id="sTitle"></h1><div id="sSub"></div></div>
+  <div class="tw"><table id="sTable"></table></div>
+</section>
+
+<!-- ③ タイム入力 -->
 <section class="tab" id="tab-times">
   <div class="card">
     <h2 id="tFormTitle">タイム入力</h2>
@@ -82,7 +107,7 @@
   </div>
 </section>
 
-<!-- ③ 結果 -->
+<!-- ④ 結果 -->
 <section class="tab" id="tab-res">
   <div class="card noprint">
     <div class="btns">
@@ -124,7 +149,6 @@
   </div>
 </section>
 </main>
-<datalist id="clsList"></datalist>
 
 <script src="js/core.js"></script>
 <script src="js/app.js"></script>

@@ -13,6 +13,25 @@
   /** 自然順比較（"2" < "10"、日本語対応） */
   const nat = (a, b) => String(a ?? '').localeCompare(String(b ?? ''), 'ja', { numeric: true });
 
+  /**
+   * クラス名の並び順比較関数を作る。
+   * definedOrder（S.classes、クラス設定で登録した順）に載っているクラスはその順。
+   * 載っていないクラス（旧データ等）はnat順で後ろに、未設定(NOCLS)は常に最後。
+   * definedOrderが空／未指定なら、全クラスをnat順に比較（従来の挙動）。
+   */
+  function clsComparator(definedOrder) {
+    const order = Array.isArray(definedOrder) ? definedOrder : [];
+    return (a, b) => {
+      if (a === NOCLS) return b === NOCLS ? 0 : 1;
+      if (b === NOCLS) return -1;
+      const ia = order.indexOf(a), ib = order.indexOf(b);
+      if (ia !== -1 && ib !== -1) return ia - ib;
+      if (ia !== -1) return -1;
+      if (ib !== -1) return 1;
+      return nat(a, b);
+    };
+  }
+
   /** 全角数字・記号を半角にし、空白を除去 */
   function z2h(s) {
     return String(s ?? '')
@@ -122,8 +141,7 @@
     };
 
     const overall = assign(rows, 'ovr');
-    const classes = [...new Set(rows.map(r => r.cls))]
-      .sort((a, b) => a === NOCLS ? 1 : b === NOCLS ? -1 : nat(a, b));
+    const classes = [...new Set(rows.map(r => r.cls))].sort(clsComparator(state.classes));
     const byClass = {};
     classes.forEach(c => { byClass[c] = assign(rows.filter(r => r.cls === c), 'clsR'); });
     return { secs, overall, classes, byClass };
@@ -135,6 +153,7 @@
 
   const Core = {
     DAY_MS, NOCLS, STATUS, nat, z2h, parseClock, fmtClock, fmtClockFull, fmtDur, elapsed, compute, csvCell, toCsv,
+    clsComparator,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = Core;
   else root.Core = Core;

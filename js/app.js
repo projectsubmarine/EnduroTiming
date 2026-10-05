@@ -15,11 +15,18 @@ const fmtClockFull=Core.fmtClockFull;
 const compute=()=>Core.compute(S);
 
 let S=blank();
-function blank(){return {version:1,event:{name:'',date:''},settings:{prec:2},riders:[],runs:[]};}
+function blank(){return {version:1,event:{name:'',date:''},settings:{prec:2},classes:[],riders:[],startOrder:[],runs:[]};}
 
 /* ---------- 保存 ---------- */
+// 旧バックアップ（classes/startOrderが無いデータ）を補う。構造は追加のみなのでversionは上げない。
+function migrate(){
+  if(!Array.isArray(S.classes))S.classes=[];
+  if(!Array.isArray(S.startOrder))S.startOrder=[];
+  if(!S.classes.length&&S.riders.length)S.classes=[...new Set(S.riders.map(r=>r.cls).filter(Boolean))].sort(nat);
+  syncStartOrder();
+}
 function load(){
-  try{const t=localStorage.getItem(KEY);if(t){const d=JSON.parse(t);S=Object.assign(blank(),d);}}
+  try{const t=localStorage.getItem(KEY);if(t){const d=JSON.parse(t);S=Object.assign(blank(),d);migrate();}}
   catch(e){setStatus('⚠ 保存データを読み込めませんでした');}
 }
 function save(){
@@ -37,6 +44,7 @@ document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('on',x===b));
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on',t.id==='tab-'+b.dataset.tab));
   if(b.dataset.tab==='res')renderResults();
+  if(b.dataset.tab==='start')renderStartList();
   if(b.dataset.tab==='times')$('#t_bib').focus();
 });
 
@@ -51,23 +59,67 @@ function enterNav(form){
   });
 }
 
+/* ---------- 参加クラス設定 ---------- */
+$('#clsForm').onsubmit=e=>{
+  e.preventDefault();
+  const name=$('#cls_name').value.trim();
+  if(!name)return;
+  if(S.classes.includes(name)){alert(`クラス「${name}」は既に登録されています`);return;}
+  S.classes.push(name);$('#cls_name').value='';
+  save();renderClasses();
+};
+function moveCls(i,dir){
+  const j=i+dir;if(j<0||j>=S.classes.length)return;
+  [S.classes[i],S.classes[j]]=[S.classes[j],S.classes[i]];
+  save();renderClasses();renderRiders();
+}
+function renameCls(i){
+  const name=prompt('新しいクラス名を入力してください',S.classes[i]);
+  if(name==null)return;
+  const v=name.trim();
+  if(!v){alert('クラス名を入力してください');return;}
+  if(v!==S.classes[i]&&S.classes.includes(v)){alert(`クラス「${v}」は既に登録されています`);return;}
+  const old=S.classes[i];S.classes[i]=v;
+  S.riders.forEach(r=>{if(r.cls===old)r.cls=v;});
+  save();renderClasses();renderRiders();renderStartList();
+}
+function delCls(i){
+  const name=S.classes[i];const n=S.riders.filter(r=>r.cls===name).length;
+  if(n){alert(`クラス「${name}」は ${n} 名のライダーが使用中のため削除できません。先にライダーのクラスを変更してください。`);return;}
+  if(!confirm(`クラス「${name}」を削除しますか？`))return;
+  S.classes.splice(i,1);save();renderClasses();
+}
+function renderClasses(){
+  $('#clsTable').innerHTML=`<tr><th>クラス名</th><th class="c">人数</th><th class="noprint"></th></tr>`+
+    S.classes.map((c,i)=>`<tr><td><b>${esc(c)}</b></td><td class="c">${S.riders.filter(r=>r.cls===c).length}</td>
+      <td class="noprint"><button class="b s" ${i===0?'disabled':''} onclick="moveCls(${i},-1)">▲</button>
+      <button class="b s" ${i===S.classes.length-1?'disabled':''} onclick="moveCls(${i},1)">▼</button>
+      <button class="b s" onclick="renameCls(${i})">名称変更</button>
+      <button class="b s d" onclick="delCls(${i})">削除</button></td></tr>`).join('')+
+    (S.classes.length?'':`<tr><td colspan="3" class="muted">クラスが登録されていません</td></tr>`);
+  const sel=$('#r_cls'),cur=sel.value;
+  sel.innerHTML='<option value="">（未設定）</option>'+S.classes.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('');
+  sel.value=[...sel.options].some(o=>o.value===cur)?cur:'';
+}
+
 /* ---------- ① ライダー ---------- */
 let editRider=null;
 enterNav($('#rForm'));
 $('#rForm').onsubmit=e=>{
   e.preventDefault();
   const v={id:z2h($('#r_id').value),bib:z2h($('#r_bib').value),name:$('#r_name').value.trim(),
-    kana:$('#r_kana').value.trim(),cls:$('#r_cls').value.trim(),note:$('#r_note').value.trim()};
+    kana:$('#r_kana').value.trim(),cls:$('#r_cls').value.trim(),tag:$('#r_tag').value.trim(),note:$('#r_note').value.trim()};
   if(!v.bib||!v.name){alert('BIBナンバーと氏名は必須です');return;}
   const others=S.riders.filter(r=>r.uid!==editRider);
   if(others.some(r=>String(r.bib)===v.bib)){alert(`BIB ${v.bib} は既に登録されています`);$('#r_bib').focus();return;}
   if(!v.id){const nums=S.riders.map(r=>parseInt(r.id,10)).filter(n=>!isNaN(n));v.id=String((nums.length?Math.max(...nums):0)+1);}
   if(others.some(r=>String(r.id)===v.id)){alert(`ID ${v.id} は既に使われています`);$('#r_id').focus();return;}
+  if(v.tag&&others.some(r=>r.tag&&r.tag===v.tag)){alert(`ICタグ ${v.tag} は既に登録されています`);$('#r_tag').focus();return;}
   if(editRider){Object.assign(riderOf(editRider),v);}
   else S.riders.push({uid:uid(),...v});
   const keepCls=v.cls;
   resetRiderForm();$('#r_cls').value=keepCls;
-  save();renderRiders();$('#r_bib').focus();
+  syncStartOrder();save();renderRiders();renderStartList();$('#r_bib').focus();
 };
 function resetRiderForm(){
   editRider=null;$('#rForm').reset();
@@ -76,7 +128,7 @@ function resetRiderForm(){
 $('#rCancel').onclick=resetRiderForm;
 function editR(u){
   const r=riderOf(u);if(!r)return;editRider=u;
-  for(const k of ['id','bib','name','kana','cls','note'])$('#r_'+k).value=r[k]??'';
+  for(const k of ['id','bib','name','kana','cls','tag','note'])$('#r_'+k).value=r[k]??'';
   $('#rFormTitle').textContent=`ライダー編集（BIB ${r.bib}）`;$('#rSubmit').textContent='更新';$('#rCancel').hidden=false;
   $('#r_bib').focus();window.scrollTo({top:0,behavior:'smooth'});
 }
@@ -85,24 +137,58 @@ function delR(u){
   if(!confirm(`BIB ${r.bib} ${r.name} を削除しますか？${n?`\nタイム記録 ${n} 件も一緒に削除されます。`:''}`))return;
   S.riders=S.riders.filter(x=>x.uid!==u);S.runs=S.runs.filter(x=>x.rider!==u);
   if(editRider===u)resetRiderForm();
-  save();renderRiders();
+  syncStartOrder();save();renderRiders();renderStartList();
 }
 function renderRiders(){
   const q=$('#rFilter').value.trim().toLowerCase();
   const list=S.riders.slice().sort((a,b)=>nat(a.bib,b.bib))
-    .filter(r=>!q||[r.bib,r.name,r.kana,r.cls,r.id].join(' ').toLowerCase().includes(q));
+    .filter(r=>!q||[r.bib,r.name,r.kana,r.cls,r.id,r.tag].join(' ').toLowerCase().includes(q));
   $('#rCount').textContent=`登録 ${S.riders.length} 名`;
-  $('#rTable').innerHTML=`<tr><th>ID</th><th>BIB</th><th>氏名</th><th>読み仮名</th><th>クラス</th><th>特記事項</th><th class="c">記録数</th><th class="noprint"></th></tr>`+
-    list.map(r=>`<tr><td>${esc(r.id)}</td><td><b>${esc(r.bib)}</b></td><td>${esc(r.name)}</td><td>${esc(r.kana)}</td><td>${esc(r.cls)}</td>
+  $('#rTable').innerHTML=`<tr><th>ID</th><th>BIB</th><th>氏名</th><th>読み仮名</th><th>クラス</th><th>ICタグ</th><th>特記事項</th><th class="c">記録数</th><th class="noprint"></th></tr>`+
+    list.map(r=>`<tr><td>${esc(r.id)}</td><td><b>${esc(r.bib)}</b></td><td>${esc(r.name)}</td><td>${esc(r.kana)}</td><td>${esc(r.cls)}</td><td>${esc(r.tag)}</td>
       <td class="note">${esc(r.note)}</td><td class="c">${S.runs.filter(x=>x.rider===r.uid).length}</td>
       <td class="noprint"><button class="b s" onclick="editR('${r.uid}')">編集</button> <button class="b s d" onclick="delR('${r.uid}')">削除</button></td></tr>`).join('')+
-    (list.length?'':`<tr><td colspan="8" class="muted">ライダーはまだ登録されていません</td></tr>`);
-  const cls=[...new Set(S.riders.map(r=>r.cls).filter(Boolean))].sort(nat);
-  $('#clsList').innerHTML=cls.map(c=>`<option value="${esc(c)}">`).join('');
+    (list.length?'':`<tr><td colspan="9" class="muted">ライダーはまだ登録されていません</td></tr>`);
 }
 $('#rFilter').oninput=renderRiders;
 
-/* ---------- ② タイム ---------- */
+/* ---------- ② スタートリスト ---------- */
+// 出走順はS.startOrder（riders.uidの配列）で管理。ライダーの登録・削除に合わせて自動で追加／除外する。
+function defaultStartSort(a,b){return Core.clsComparator(S.classes)(a.cls||NOCLS,b.cls||NOCLS)||nat(a.bib,b.bib);}
+function syncStartOrder(){
+  const ids=new Set(S.riders.map(r=>r.uid));
+  S.startOrder=S.startOrder.filter(u=>ids.has(u));
+  const known=new Set(S.startOrder);
+  const missing=S.riders.filter(r=>!known.has(r.uid)).sort(defaultStartSort).map(r=>r.uid);
+  S.startOrder.push(...missing);
+}
+function moveStart(u,dir){
+  const i=S.startOrder.indexOf(u),j=i+dir;
+  if(i<0||j<0||j>=S.startOrder.length)return;
+  [S.startOrder[i],S.startOrder[j]]=[S.startOrder[j],S.startOrder[i]];
+  save();renderStartList();
+}
+$('#btnStartReset').onclick=()=>{
+  if(S.startOrder.length&&!confirm('出走順を「クラス→BIB順」で初期化します。手動で並べ替えた順序は失われます。よろしいですか？'))return;
+  S.startOrder=S.riders.slice().sort(defaultStartSort).map(r=>r.uid);
+  save();renderStartList();
+};
+$('#btnStartPrint').onclick=()=>{renderStartList();printTab('start');};
+// 並び替え（▲▼・初期化）はsave()済みの前提で呼ぶ。登録・削除側は先にsyncStartOrder()してから保存する。
+function renderStartList(){
+  const list=S.startOrder.map(riderOf).filter(Boolean);
+  $('#sCount').textContent=`出走予定 ${list.length} 名`;
+  $('#sTitle').textContent=(S.event.name||'レース')+' スタートリスト';
+  $('#sSub').textContent=[S.event.date,'出力 '+new Date().toLocaleString('ja-JP')].filter(Boolean).join('　');
+  $('#sTable').innerHTML=`<tr><th class="c">出走順</th><th>BIB</th><th>氏名</th><th>読み仮名</th><th>クラス</th><th>ICタグ</th><th>特記事項</th><th class="noprint"></th></tr>`+
+    list.map((r,i)=>`<tr><td class="c"><b>${i+1}</b></td><td><b>${esc(r.bib)}</b></td><td>${esc(r.name)}</td><td>${esc(r.kana)}</td><td>${esc(r.cls)}</td><td>${esc(r.tag)}</td>
+      <td class="note">${esc(r.note)}</td><td class="noprint">
+      <button class="b s" ${i===0?'disabled':''} onclick="moveStart('${r.uid}',-1)">▲</button>
+      <button class="b s" ${i===list.length-1?'disabled':''} onclick="moveStart('${r.uid}',1)">▼</button></td></tr>`).join('')+
+    (list.length?'':`<tr><td colspan="8" class="muted">ライダーが登録されていません</td></tr>`);
+}
+
+/* ---------- ③ タイム ---------- */
 let editRun=null;
 enterNav($('#tForm'));
 function tPreview(){
@@ -174,7 +260,7 @@ function renderRuns(){
 }
 $('#tFilter').oninput=renderRuns;
 
-/* ---------- ③ 集計 ---------- */
+/* ---------- ④ 集計 ---------- */
 function renderResults(){
   const R=compute();const sel=$('#resView');const cur=sel.value||'__all';
   sel.innerHTML=`<option value="__ovr">総合順位</option><option value="__all">クラス別（全クラス）</option>`+
@@ -212,7 +298,11 @@ function tableHtml(list,secs,mode){
   return `<div class="tw"><table>${head}${body}</table></div>`;
 }
 $('#resView').onchange=renderResults;
-$('#btnPrint').onclick=()=>{renderResults();window.print();};
+$('#btnPrint').onclick=()=>{renderResults();printTab('res');};
+
+/* ---------- 印刷（結果／スタートリストなど、印刷対象のタブだけ表示して印刷） ---------- */
+function printTab(name){document.body.dataset.print=name;window.print();}
+window.addEventListener('afterprint',()=>{delete document.body.dataset.print;});
 
 /* ---------- CSV / JSON ---------- */
 function stamp(){const d=new Date(),p=n=>String(n).padStart(2,'0');return `${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}`;}
@@ -232,11 +322,11 @@ $('#btnResCsv').onclick=()=>{
   download(fname('結果','csv'),toCsv(rows),'text/csv');
 };
 $('#btnAllCsv').onclick=()=>{
-  const rows=[['ID','BIBナンバー','氏名','読み仮名','参加クラス','セクション#','スタート時刻','ゴール時刻','タイム','状態','特記事項（ライダー）','特記事項（記録）']];
+  const rows=[['ID','BIBナンバー','氏名','読み仮名','参加クラス','ICタグ','セクション#','スタート時刻','ゴール時刻','タイム','状態','特記事項（ライダー）','特記事項（記録）']];
   S.riders.slice().sort((a,b)=>nat(a.bib,b.bib)).forEach(r=>{
     const runs=S.runs.filter(x=>x.rider===r.uid).sort((a,b)=>nat(a.sec,b.sec));
-    if(!runs.length)rows.push([r.id,r.bib,r.name,r.kana,r.cls,'','','','','',r.note,'']);
-    runs.forEach(x=>rows.push([r.id,r.bib,r.name,r.kana,r.cls,x.sec,Core.fmtClock(x.start,3),Core.fmtClock(x.goal,3),Core.fmtDur(elapsed(x),3),STATUS[x.status],r.note,x.note]));
+    if(!runs.length)rows.push([r.id,r.bib,r.name,r.kana,r.cls,r.tag,'','','','','',r.note,'']);
+    runs.forEach(x=>rows.push([r.id,r.bib,r.name,r.kana,r.cls,r.tag,x.sec,Core.fmtClock(x.start,3),Core.fmtClock(x.goal,3),Core.fmtDur(elapsed(x),3),STATUS[x.status],r.note,x.note]));
   });
   download(fname('全データ','csv'),toCsv(rows),'text/csv');
 };
@@ -247,7 +337,7 @@ $('#fileIn').onchange=e=>{
   rd.onload=()=>{try{
     const d=JSON.parse(rd.result);if(!Array.isArray(d.riders)||!Array.isArray(d.runs))throw 0;
     if(!confirm(`バックアップを読み込みます（ライダー${d.riders.length}名・記録${d.runs.length}件）。\n今のデータは置き換えられます。よろしいですか？`))return;
-    S=Object.assign(blank(),d);save();renderAll();alert('読み込みました');
+    S=Object.assign(blank(),d);migrate();save();renderAll();alert('読み込みました');
   }catch(_){alert('このファイルは読み込めません（形式が違います）');}};
   rd.readAsText(f);e.target.value='';
 };
@@ -263,6 +353,7 @@ $('#btnSample').onclick=()=>{
   const cls=['IA','IB','NA'];const fam=['佐藤','鈴木','高橋','田中','伊藤','渡辺','山本','中村','小林','加藤','吉田','山田'];
   const kn=['サトウ','スズキ','タカハシ','タナカ','イトウ','ワタナベ','ヤマモト','ナカムラ','コバヤシ','カトウ','ヨシダ','ヤマダ'];
   const gn=['翔太','大輔','健','涼','拓海','誠'],gk=['ショウタ','ダイスケ','ケン','リョウ','タクミ','マコト'];
+  cls.forEach(c=>{if(!S.classes.includes(c))S.classes.push(c);});
   const base=Math.max(0,...S.riders.map(r=>parseInt(r.bib,10)||0));
   for(let i=0;i<12;i++){
     const u=uid(),bib=String(base+i+1),g=i%6;
@@ -275,7 +366,7 @@ $('#btnSample').onclick=()=>{
       S.runs.push(run);
     }
   }
-  save();renderAll();alert('サンプルデータを追加しました（12名・2セクション）');
+  syncStartOrder();save();renderAll();alert('サンプルデータを追加しました（12名・2セクション）');
 };
 $('#prec').onchange=e=>{S.settings.prec=+e.target.value;save();renderAll();};
 $('#evName').oninput=e=>{S.event.name=e.target.value;save();};
@@ -284,6 +375,6 @@ window.addEventListener('storage',e=>{if(e.key===KEY){load();renderAll();}}); //
 
 function renderAll(){
   $('#evName').value=S.event.name||'';$('#evDate').value=S.event.date||'';$('#prec').value=S.settings.prec;
-  renderRiders();renderRuns();renderResults();tPreview();
+  renderClasses();renderRiders();renderStartList();renderRuns();renderResults();tPreview();
 }
 load();renderAll();

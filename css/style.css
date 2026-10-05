@@ -21,6 +21,8 @@ input.bad{border-color:var(--warn);background:#fff3f2}
 .btns{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 button.b{font:inherit;padding:7px 14px;border-radius:5px;border:1px solid #c9ced6;background:#fff;cursor:pointer}
 button.b:hover{background:#f0f2f5}
+button.b:disabled{opacity:.4;cursor:default}
+button.b:disabled:hover{background:#fff}
 button.p{background:var(--accent);border-color:var(--accent);color:#fff}
 button.p:hover{background:#174ead}
 button.d{color:var(--warn)}
@@ -53,5 +55,7 @@ tr.r1 td{background:var(--g1)}tr.r2 td{background:var(--g2)}tr.r3 td{background:
   th{position:static}
   th,td{padding:3px 5px}
   .cls-block{break-inside:avoid}
-  .tab{display:none!important}#tab-res{display:block!important}
+  .tab{display:none!important}
+  body[data-print="res"] #tab-res{display:block!important}
+  body[data-print="start"] #tab-start{display:block!important}
 }
