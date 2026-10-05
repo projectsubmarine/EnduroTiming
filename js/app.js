@@ -15,14 +15,18 @@ const fmtClockFull=Core.fmtClockFull;
 const compute=()=>Core.compute(S);
 
 let S=blank();
-function blank(){return {version:1,event:{name:'',date:''},settings:{prec:2},classes:[],riders:[],startOrder:[],runs:[]};}
+function blank(){return {version:2,event:{name:'',date:''},settings:{prec:2},classes:[],riders:[],startOrder:[],runs:[]};}
 
 /* ---------- 保存 ---------- */
-// 旧バックアップ（classes/startOrderが無いデータ）を補う。構造は追加のみなのでversionは上げない。
+// 旧バックアップを補う：
+// ・v1以前：classes/startOrderが無い → 補完
+// ・v1：classesが文字列配列 → {name,digit}形式へ変換（digitは未設定=null）
 function migrate(){
   if(!Array.isArray(S.classes))S.classes=[];
+  S.classes=S.classes.map(c=>typeof c==='string'?{name:c,digit:null}:{name:c.name,digit:c.digit??null});
   if(!Array.isArray(S.startOrder))S.startOrder=[];
-  if(!S.classes.length&&S.riders.length)S.classes=[...new Set(S.riders.map(r=>r.cls).filter(Boolean))].sort(nat);
+  if(!S.classes.length&&S.riders.length)S.classes=[...new Set(S.riders.map(r=>r.cls).filter(Boolean))].sort(nat).map(name=>({name,digit:null}));
+  S.version=2;
   syncStartOrder();
 }
 function load(){
@@ -60,12 +64,15 @@ function enterNav(form){
 }
 
 /* ---------- 参加クラス設定 ---------- */
+// S.classes の要素は {name, digit} 。digit（1〜9）は任意：BIBナンバーの100の位をこのクラスの番号帯として扱う。
 $('#clsForm').onsubmit=e=>{
   e.preventDefault();
   const name=$('#cls_name').value.trim();
+  const digit=$('#cls_digit').value?+$('#cls_digit').value:null;
   if(!name)return;
-  if(S.classes.includes(name)){alert(`クラス「${name}」は既に登録されています`);return;}
-  S.classes.push(name);$('#cls_name').value='';
+  if(S.classes.some(c=>c.name===name)){alert(`クラス「${name}」は既に登録されています`);return;}
+  if(digit&&S.classes.some(c=>c.digit===digit)){alert(`BIB先頭の数字「${digit}」は既に別のクラスで使われています`);return;}
+  S.classes.push({name,digit});$('#cls_name').value='';$('#cls_digit').value='';
   save();renderClasses();
 };
 function moveCls(i,dir){
@@ -74,49 +81,83 @@ function moveCls(i,dir){
   save();renderClasses();renderRiders();
 }
 function renameCls(i){
-  const name=prompt('新しいクラス名を入力してください',S.classes[i]);
+  const cur=S.classes[i];
+  const name=prompt('新しいクラス名を入力してください',cur.name);
   if(name==null)return;
   const v=name.trim();
   if(!v){alert('クラス名を入力してください');return;}
-  if(v!==S.classes[i]&&S.classes.includes(v)){alert(`クラス「${v}」は既に登録されています`);return;}
-  const old=S.classes[i];S.classes[i]=v;
+  if(v!==cur.name&&S.classes.some(c=>c.name===v)){alert(`クラス「${v}」は既に登録されています`);return;}
+  const old=cur.name;cur.name=v;
   S.riders.forEach(r=>{if(r.cls===old)r.cls=v;});
   save();renderClasses();renderRiders();renderStartList();
 }
+function setClsDigit(i){
+  const cur=S.classes[i];
+  const input=prompt('BIBナンバーの先頭の数字（1〜9）を入力してください。\n設定しない場合は空欄のままにしてください。',cur.digit??'');
+  if(input==null)return;
+  const t=input.trim();
+  if(!t){cur.digit=null;save();renderClasses();return;}
+  if(!/^[1-9]$/.test(t)){alert('先頭の数字は1〜9の半角数字で入力してください');return;}
+  const d=+t;
+  if(S.classes.some((c,j)=>j!==i&&c.digit===d)){alert(`BIB先頭の数字「${d}」は既に別のクラスで使われています`);return;}
+  cur.digit=d;save();renderClasses();
+}
 function delCls(i){
-  const name=S.classes[i];const n=S.riders.filter(r=>r.cls===name).length;
+  const name=S.classes[i].name;const n=S.riders.filter(r=>r.cls===name).length;
   if(n){alert(`クラス「${name}」は ${n} 名のライダーが使用中のため削除できません。先にライダーのクラスを変更してください。`);return;}
   if(!confirm(`クラス「${name}」を削除しますか？`))return;
   S.classes.splice(i,1);save();renderClasses();
 }
 function renderClasses(){
-  $('#clsTable').innerHTML=`<tr><th>クラス名</th><th class="c">人数</th><th class="noprint"></th></tr>`+
-    S.classes.map((c,i)=>`<tr><td><b>${esc(c)}</b></td><td class="c">${S.riders.filter(r=>r.cls===c).length}</td>
+  $('#clsTable').innerHTML=`<tr><th>クラス名</th><th class="c">BIB先頭の数字</th><th class="c">番号帯</th><th class="c">人数</th><th class="noprint"></th></tr>`+
+    S.classes.map((c,i)=>{const r=Core.bibRange(c.digit);
+      return `<tr><td><b>${esc(c.name)}</b></td><td class="c">${c.digit??'<span class="muted">未設定</span>'}</td>
+      <td class="c">${r?`${r.min}〜${r.max}`:'<span class="muted">—</span>'}</td>
+      <td class="c">${S.riders.filter(x=>x.cls===c.name).length}</td>
       <td class="noprint"><button class="b s" ${i===0?'disabled':''} onclick="moveCls(${i},-1)">▲</button>
       <button class="b s" ${i===S.classes.length-1?'disabled':''} onclick="moveCls(${i},1)">▼</button>
       <button class="b s" onclick="renameCls(${i})">名称変更</button>
-      <button class="b s d" onclick="delCls(${i})">削除</button></td></tr>`).join('')+
-    (S.classes.length?'':`<tr><td colspan="3" class="muted">クラスが登録されていません</td></tr>`);
+      <button class="b s" onclick="setClsDigit(${i})">先頭の数字</button>
+      <button class="b s d" onclick="delCls(${i})">削除</button></td></tr>`;}).join('')+
+    (S.classes.length?'':`<tr><td colspan="5" class="muted">クラスが登録されていません</td></tr>`);
   const sel=$('#r_cls'),cur=sel.value;
-  sel.innerHTML='<option value="">（未設定）</option>'+S.classes.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('');
+  sel.innerHTML='<option value="">（未設定）</option>'+S.classes.map(c=>{const r=Core.bibRange(c.digit);
+    return `<option value="${esc(c.name)}">${esc(c.name)}${r?`（${r.min}〜${r.max}）`:''}</option>`;}).join('');
   sel.value=[...sel.options].some(o=>o.value===cur)?cur:'';
 }
 
 /* ---------- ① ライダー ---------- */
 let editRider=null;
 enterNav($('#rForm'));
+// クラスを選ぶと、そのクラスのBIB番号帯（先頭の数字）から未使用の最小番号を自動入力する（BIB欄が空の時のみ）
+function autoFillBib(){
+  if($('#r_bib').value.trim())return;
+  const name=$('#r_cls').value;if(!name)return;
+  const used=S.riders.filter(r=>r.uid!==editRider).map(r=>r.bib);
+  const next=Core.nextBibInClass(name,S.classes,used);
+  if(next)$('#r_bib').value=next;
+}
+$('#r_cls').addEventListener('change',autoFillBib);
 $('#rForm').onsubmit=e=>{
   e.preventDefault();
   const v={bib:z2h($('#r_bib').value),name:$('#r_name').value.trim(),
     kana:$('#r_kana').value.trim(),cls:$('#r_cls').value.trim(),tag:$('#r_tag').value.trim(),note:$('#r_note').value.trim()};
   if(!v.bib||!v.name){alert('BIBナンバーと氏名は必須です');return;}
+  if(!Core.isValidBib(v.bib)){alert('BIBナンバーは100〜999の3桁の数字で入力してください（下2桁が00の番号は使用しません）');$('#r_bib').focus();return;}
   const others=S.riders.filter(r=>r.uid!==editRider);
   if(others.some(r=>String(r.bib)===v.bib)){alert(`BIB ${v.bib} は既に登録されています`);$('#r_bib').focus();return;}
+  if(v.cls){
+    const target=S.classes.find(c=>c.name===v.cls);
+    const range=target&&Core.bibRange(target.digit);
+    if(range&&(+v.bib<range.min||+v.bib>range.max)){
+      alert(`BIB ${v.bib} はクラス「${v.cls}」のBIB番号帯（${range.min}〜${range.max}）と一致しません`);$('#r_bib').focus();return;
+    }
+  }
   if(v.tag&&others.some(r=>r.tag&&r.tag===v.tag)){alert(`ICタグ ${v.tag} は既に登録されています`);$('#r_tag').focus();return;}
   if(editRider){Object.assign(riderOf(editRider),v);}
   else S.riders.push({uid:uid(),...v});
   const keepCls=v.cls;
-  resetRiderForm();$('#r_cls').value=keepCls;
+  resetRiderForm();$('#r_cls').value=keepCls;autoFillBib();
   syncStartOrder();save();renderRiders();renderStartList();$('#r_bib').focus();
 };
 function resetRiderForm(){
@@ -351,11 +392,11 @@ $('#btnSample').onclick=()=>{
   const cls=['IA','IB','NA'];const fam=['佐藤','鈴木','高橋','田中','伊藤','渡辺','山本','中村','小林','加藤','吉田','山田'];
   const kn=['サトウ','スズキ','タカハシ','タナカ','イトウ','ワタナベ','ヤマモト','ナカムラ','コバヤシ','カトウ','ヨシダ','ヤマダ'];
   const gn=['翔太','大輔','健','涼','拓海','誠'],gk=['ショウタ','ダイスケ','ケン','リョウ','タクミ','マコト'];
-  cls.forEach(c=>{if(!S.classes.includes(c))S.classes.push(c);});
-  const base=Math.max(0,...S.riders.map(r=>parseInt(r.bib,10)||0));
+  cls.forEach((c,i)=>{if(!S.classes.some(x=>x.name===c))S.classes.push({name:c,digit:i+1});});
   for(let i=0;i<12;i++){
-    const u=uid(),bib=String(base+i+1),g=i%6;
-    S.riders.push({uid:u,bib,name:`${fam[i]} ${gn[g]}`,kana:`${kn[i]} ${gk[g]}`,cls:cls[i%3],note:''});
+    const u=uid(),c=cls[i%3],g=i%6;
+    const bib=Core.nextBibInClass(c,S.classes,S.riders.map(r=>r.bib))||String(101+S.riders.length);
+    S.riders.push({uid:u,bib,name:`${fam[i]} ${gn[g]}`,kana:`${kn[i]} ${gk[g]}`,cls:c,note:''});
     for(const sec of ['1','2']){
       const st=(10*3600+(sec==='2'?3600:0)+i*60)*1000;
       const run={uid:uid(),rider:u,sec,start:st,goal:st+(300+Math.floor(Math.random()*90))*1000+Math.floor(Math.random()*1000),status:'OK',note:''};

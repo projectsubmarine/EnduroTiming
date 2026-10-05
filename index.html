@@ -26,9 +26,22 @@
 <section class="tab on" id="tab-riders">
   <div class="card">
     <h2>参加クラス設定</h2>
-    <p class="hint">イベントごとに参加クラスを登録してください。ここで登録したクラスが、下の「参加クラス」欄で選べるようになります（表示順は結果表・スタートリストの表示順にもなります）。</p>
+    <p class="hint">イベントごとに参加クラスを登録してください。ここで登録したクラスが、下の「参加クラス」欄で選べるようになります（表示順は結果表・スタートリストの表示順にもなります）。<br>
+      「BIB先頭の数字」を指定すると、BIBナンバー（3桁・100〜999、下2桁が00の番号は使用しません）の100の位でクラスが分かるようになり、ライダー登録時にそのクラスの番号帯から自動でBIBが入力されます（任意）。</p>
     <form id="clsForm" autocomplete="off" class="btns" style="margin-top:8px">
       <input id="cls_name" placeholder="クラス名（例：IA, IB, ビギナー）" style="flex:1;min-width:160px">
+      <select id="cls_digit" title="BIBナンバーの先頭の数字（任意）">
+        <option value="">BIB先頭の数字（任意）</option>
+        <option value="1">1（101〜199）</option>
+        <option value="2">2（201〜299）</option>
+        <option value="3">3（301〜399）</option>
+        <option value="4">4（401〜499）</option>
+        <option value="5">5（501〜599）</option>
+        <option value="6">6（601〜699）</option>
+        <option value="7">7（701〜799）</option>
+        <option value="8">8（801〜899）</option>
+        <option value="9">9（901〜999）</option>
+      </select>
       <button class="b p" type="submit">クラスを追加</button>
     </form>
     <div class="tw" style="margin-top:10px"><table id="clsTable"></table></div>
@@ -37,7 +50,7 @@
     <h2 id="rFormTitle">ライダー登録</h2>
     <form id="rForm" autocomplete="off">
       <div class="grid">
-        <label>BIBナンバー *<input id="r_bib" required></label>
+        <label>BIBナンバー *<input id="r_bib" required maxlength="3" placeholder="例：101"></label>
         <label>氏名 *<input id="r_name" required></label>
         <label>読み仮名<input id="r_kana"></label>
         <label>参加クラス<select id="r_cls"><option value="">（未設定）</option></select></label>

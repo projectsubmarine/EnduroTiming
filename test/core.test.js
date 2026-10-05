@@ -95,6 +95,50 @@ test('clsComparator: 未定義クラスはnat順で設定済みクラスの後�
   assert.deepEqual(['Z', 'A', 'B', C.NOCLS].sort(cmp), ['B', 'A', 'Z', C.NOCLS]);
 });
 
+test('compute: S.classesは{name,digit}形式でも動く（名前だけを見る）', () => {
+  const st = state();
+  st.classes = [{ name: 'IB', digit: 2 }, { name: 'IA', digit: 1 }];
+  const R = C.compute(st);
+  assert.deepEqual(R.classes, ['IB', 'IA', C.NOCLS]);
+});
+
+test('isValidBib: 3桁（100〜999）のみ有効。下2桁00（欠番）は不可', () => {
+  assert.equal(C.isValidBib('101'), true);
+  assert.equal(C.isValidBib('999'), true);
+  assert.equal(C.isValidBib('100'), false); // 下2桁00は欠番
+  assert.equal(C.isValidBib('500'), false);
+  assert.equal(C.isValidBib('099'), false); // 先頭0は3桁扱いしない
+  assert.equal(C.isValidBib('12'), false);
+  assert.equal(C.isValidBib('1000'), false);
+  assert.equal(C.isValidBib('abc'), false);
+  assert.equal(C.isValidBib(''), false);
+});
+
+test('bibRange: 先頭の数字(1〜9)からBIB番号帯を求める（下2桁00は除く）', () => {
+  assert.deepEqual(C.bibRange(1), { min: 101, max: 199 });
+  assert.deepEqual(C.bibRange(9), { min: 901, max: 999 });
+  assert.equal(C.bibRange(0), null);
+  assert.equal(C.bibRange(10), null);
+  assert.equal(C.bibRange(null), null);
+});
+
+test('classForBib: BIBから番号帯の一致するクラス名を引く', () => {
+  const classes = [{ name: 'IA', digit: 1 }, { name: 'IB', digit: 2 }, { name: 'NA', digit: null }];
+  assert.equal(C.classForBib('150', classes), 'IA');
+  assert.equal(C.classForBib('250', classes), 'IB');
+  assert.equal(C.classForBib('350', classes), null); // どの番号帯にも属さない
+  assert.equal(C.classForBib('100', classes), null);  // 欠番（下2桁00）はどのクラスにも属さない
+  assert.equal(C.classForBib('abc', classes), null);
+});
+
+test('nextBibInClass: クラスの番号帯で未使用の最小番号を返す（x00は飛ばす）', () => {
+  const classes = [{ name: 'IA', digit: 1 }, { name: 'NA', digit: null }];
+  assert.equal(C.nextBibInClass('IA', classes, ['101', '102', '104']), '103');
+  assert.equal(C.nextBibInClass('IA', classes, []), '101'); // 100は欠番なので101から
+  assert.equal(C.nextBibInClass('NA', classes, []), null); // 先頭の数字が未設定
+  assert.equal(C.nextBibInClass('存在しない', classes, []), null);
+});
+
 test('toCsv: BOM・エスケープ', () => {
   const s = C.toCsv([['a', 'b,c'], ['"x"', '']]);
   assert.equal(s, '﻿a,"b,c"\r\n"""x""",');

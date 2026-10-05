@@ -18,9 +18,10 @@
    * definedOrder（S.classes、クラス設定で登録した順）に載っているクラスはその順。
    * 載っていないクラス（旧データ等）はnat順で後ろに、未設定(NOCLS)は常に最後。
    * definedOrderが空／未指定なら、全クラスをnat順に比較（従来の挙動）。
+   * S.classesの要素は文字列（旧形式）・{name,digit}（現形式）のどちらでもよい。
    */
   function clsComparator(definedOrder) {
-    const order = Array.isArray(definedOrder) ? definedOrder : [];
+    const order = (Array.isArray(definedOrder) ? definedOrder : []).map(c => typeof c === 'string' ? c : c?.name);
     return (a, b) => {
       if (a === NOCLS) return b === NOCLS ? 0 : 1;
       if (b === NOCLS) return -1;
@@ -30,6 +31,51 @@
       if (ib !== -1) return 1;
       return nat(a, b);
     };
+  }
+
+  /** BIBナンバーが3桁（100〜999）の形式か。下2桁が00（100,200,…,900）は欠番として使用しない */
+  function isValidBib(bib) {
+    const s = String(bib ?? '');
+    if (!/^[1-9]\d{2}$/.test(s)) return false;
+    return Number(s) % 100 !== 0;
+  }
+
+  /**
+   * クラスの「先頭の数字」(1〜9)から、そのクラスのBIB番号帯 {min,max} を返す。範囲外・未指定はnull。
+   * 下2桁が00の番号（例：digit=1なら100）は欠番のため、minは+1から始まる。
+   */
+  function bibRange(digit) {
+    const d = Number(digit);
+    if (!Number.isInteger(d) || d < 1 || d > 9) return null;
+    return { min: d * 100 + 1, max: d * 100 + 99 };
+  }
+
+  /**
+   * BIBナンバーが、指定クラス一覧（[{name,digit}]）のどのクラスの番号帯に入るかを返す。
+   * 該当するクラスが無い（どの番号帯にも入らない／形式が不正）場合はnull。
+   */
+  function classForBib(bib, classes) {
+    const n = parseInt(bib, 10);
+    if (!Number.isInteger(n)) return null;
+    for (const c of (classes || [])) {
+      if (!c || typeof c !== 'object') continue;
+      const r = bibRange(c.digit);
+      if (r && n >= r.min && n <= r.max) return c.name;
+    }
+    return null;
+  }
+
+  /**
+   * 指定クラス名の番号帯の中で、未使用の最小のBIBナンバーを返す（文字列）。
+   * クラスが見つからない／先頭の数字が未設定／番号帯が満杯の場合はnull。
+   */
+  function nextBibInClass(name, classes, usedBibs) {
+    const target = (classes || []).find(c => c && typeof c === 'object' && c.name === name);
+    const r = target && bibRange(target.digit);
+    if (!r) return null;
+    const used = new Set((usedBibs || []).map(b => parseInt(b, 10)));
+    for (let n = r.min; n <= r.max; n++) if (!used.has(n)) return String(n);
+    return null;
   }
 
   /** 全角数字・記号を半角にし、空白を除去 */
@@ -153,7 +199,7 @@
 
   const Core = {
     DAY_MS, NOCLS, STATUS, nat, z2h, parseClock, fmtClock, fmtClockFull, fmtDur, elapsed, compute, csvCell, toCsv,
-    clsComparator,
+    clsComparator, isValidBib, bibRange, classForBib, nextBibInClass,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = Core;
   else root.Core = Core;
