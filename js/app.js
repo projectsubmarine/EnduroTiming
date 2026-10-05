@@ -107,13 +107,11 @@ let editRider=null;
 enterNav($('#rForm'));
 $('#rForm').onsubmit=e=>{
   e.preventDefault();
-  const v={id:z2h($('#r_id').value),bib:z2h($('#r_bib').value),name:$('#r_name').value.trim(),
+  const v={bib:z2h($('#r_bib').value),name:$('#r_name').value.trim(),
     kana:$('#r_kana').value.trim(),cls:$('#r_cls').value.trim(),tag:$('#r_tag').value.trim(),note:$('#r_note').value.trim()};
   if(!v.bib||!v.name){alert('BIBナンバーと氏名は必須です');return;}
   const others=S.riders.filter(r=>r.uid!==editRider);
   if(others.some(r=>String(r.bib)===v.bib)){alert(`BIB ${v.bib} は既に登録されています`);$('#r_bib').focus();return;}
-  if(!v.id){const nums=S.riders.map(r=>parseInt(r.id,10)).filter(n=>!isNaN(n));v.id=String((nums.length?Math.max(...nums):0)+1);}
-  if(others.some(r=>String(r.id)===v.id)){alert(`ID ${v.id} は既に使われています`);$('#r_id').focus();return;}
   if(v.tag&&others.some(r=>r.tag&&r.tag===v.tag)){alert(`ICタグ ${v.tag} は既に登録されています`);$('#r_tag').focus();return;}
   if(editRider){Object.assign(riderOf(editRider),v);}
   else S.riders.push({uid:uid(),...v});
@@ -128,7 +126,7 @@ function resetRiderForm(){
 $('#rCancel').onclick=resetRiderForm;
 function editR(u){
   const r=riderOf(u);if(!r)return;editRider=u;
-  for(const k of ['id','bib','name','kana','cls','tag','note'])$('#r_'+k).value=r[k]??'';
+  for(const k of ['bib','name','kana','cls','tag','note'])$('#r_'+k).value=r[k]??'';
   $('#rFormTitle').textContent=`ライダー編集（BIB ${r.bib}）`;$('#rSubmit').textContent='更新';$('#rCancel').hidden=false;
   $('#r_bib').focus();window.scrollTo({top:0,behavior:'smooth'});
 }
@@ -142,13 +140,13 @@ function delR(u){
 function renderRiders(){
   const q=$('#rFilter').value.trim().toLowerCase();
   const list=S.riders.slice().sort((a,b)=>nat(a.bib,b.bib))
-    .filter(r=>!q||[r.bib,r.name,r.kana,r.cls,r.id,r.tag].join(' ').toLowerCase().includes(q));
+    .filter(r=>!q||[r.bib,r.name,r.kana,r.cls,r.tag].join(' ').toLowerCase().includes(q));
   $('#rCount').textContent=`登録 ${S.riders.length} 名`;
-  $('#rTable').innerHTML=`<tr><th>ID</th><th>BIB</th><th>氏名</th><th>読み仮名</th><th>クラス</th><th>ICタグ</th><th>特記事項</th><th class="c">記録数</th><th class="noprint"></th></tr>`+
-    list.map(r=>`<tr><td>${esc(r.id)}</td><td><b>${esc(r.bib)}</b></td><td>${esc(r.name)}</td><td>${esc(r.kana)}</td><td>${esc(r.cls)}</td><td>${esc(r.tag)}</td>
+  $('#rTable').innerHTML=`<tr><th>BIB</th><th>氏名</th><th>読み仮名</th><th>クラス</th><th>ICタグ</th><th>特記事項</th><th class="c">記録数</th><th class="noprint"></th></tr>`+
+    list.map(r=>`<tr><td><b>${esc(r.bib)}</b></td><td>${esc(r.name)}</td><td>${esc(r.kana)}</td><td>${esc(r.cls)}</td><td>${esc(r.tag)}</td>
       <td class="note">${esc(r.note)}</td><td class="c">${S.runs.filter(x=>x.rider===r.uid).length}</td>
       <td class="noprint"><button class="b s" onclick="editR('${r.uid}')">編集</button> <button class="b s d" onclick="delR('${r.uid}')">削除</button></td></tr>`).join('')+
-    (list.length?'':`<tr><td colspan="9" class="muted">ライダーはまだ登録されていません</td></tr>`);
+    (list.length?'':`<tr><td colspan="8" class="muted">ライダーはまだ登録されていません</td></tr>`);
 }
 $('#rFilter').oninput=renderRiders;
 
@@ -315,18 +313,18 @@ function download(name,text,type){
 $('#btnResCsv').onclick=()=>{
   const R=compute();const v=$('#resView').value;
   const list=v==='__ovr'?R.overall:(v==='__all'?R.classes:[v]).flatMap(c=>R.byClass[c]);
-  const rows=[['総合順位','クラス順位','BIB','ID','氏名','読み仮名','クラス',...R.secs.map(s=>'S'+s),'区間数','合計タイム','総合トップ差','クラストップ差','状態','特記事項']];
-  list.forEach(x=>rows.push([x.ranked?x.ovr:'',x.ranked?x.clsR:'',x.rd.bib,x.rd.id,x.rd.name,x.rd.kana,x.cls,
+  const rows=[['総合順位','クラス順位','BIB','氏名','読み仮名','クラス',...R.secs.map(s=>'S'+s),'区間数','合計タイム','総合トップ差','クラストップ差','状態','特記事項']];
+  list.forEach(x=>rows.push([x.ranked?x.ovr:'',x.ranked?x.clsR:'',x.rd.bib,x.rd.name,x.rd.kana,x.cls,
     ...R.secs.map(s=>{const o=x.bySec[s];return !o?'':o.r.status!=='OK'?o.r.status:o.e==null?'計測中':fmtDur(o.e);}),
     x.n,x.ranked?fmtDur(x.total):'',x.ranked?x.ovrGap:'',x.ranked?x.clsRGap:'',x.ranked?'':x.label,x.notes]));
   download(fname('結果','csv'),toCsv(rows),'text/csv');
 };
 $('#btnAllCsv').onclick=()=>{
-  const rows=[['ID','BIBナンバー','氏名','読み仮名','参加クラス','ICタグ','セクション#','スタート時刻','ゴール時刻','タイム','状態','特記事項（ライダー）','特記事項（記録）']];
+  const rows=[['BIBナンバー','氏名','読み仮名','参加クラス','ICタグ','セクション#','スタート時刻','ゴール時刻','タイム','状態','特記事項（ライダー）','特記事項（記録）']];
   S.riders.slice().sort((a,b)=>nat(a.bib,b.bib)).forEach(r=>{
     const runs=S.runs.filter(x=>x.rider===r.uid).sort((a,b)=>nat(a.sec,b.sec));
-    if(!runs.length)rows.push([r.id,r.bib,r.name,r.kana,r.cls,r.tag,'','','','','',r.note,'']);
-    runs.forEach(x=>rows.push([r.id,r.bib,r.name,r.kana,r.cls,r.tag,x.sec,Core.fmtClock(x.start,3),Core.fmtClock(x.goal,3),Core.fmtDur(elapsed(x),3),STATUS[x.status],r.note,x.note]));
+    if(!runs.length)rows.push([r.bib,r.name,r.kana,r.cls,r.tag,'','','','','',r.note,'']);
+    runs.forEach(x=>rows.push([r.bib,r.name,r.kana,r.cls,r.tag,x.sec,Core.fmtClock(x.start,3),Core.fmtClock(x.goal,3),Core.fmtDur(elapsed(x),3),STATUS[x.status],r.note,x.note]));
   });
   download(fname('全データ','csv'),toCsv(rows),'text/csv');
 };
@@ -357,7 +355,7 @@ $('#btnSample').onclick=()=>{
   const base=Math.max(0,...S.riders.map(r=>parseInt(r.bib,10)||0));
   for(let i=0;i<12;i++){
     const u=uid(),bib=String(base+i+1),g=i%6;
-    S.riders.push({uid:u,id:String(base+i+1),bib,name:`${fam[i]} ${gn[g]}`,kana:`${kn[i]} ${gk[g]}`,cls:cls[i%3],note:''});
+    S.riders.push({uid:u,bib,name:`${fam[i]} ${gn[g]}`,kana:`${kn[i]} ${gk[g]}`,cls:cls[i%3],note:''});
     for(const sec of ['1','2']){
       const st=(10*3600+(sec==='2'?3600:0)+i*60)*1000;
       const run={uid:uid(),rider:u,sec,start:st,goal:st+(300+Math.floor(Math.random()*90))*1000+Math.floor(Math.random()*1000),status:'OK',note:''};

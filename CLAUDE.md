@@ -32,7 +32,7 @@ S = {
   event:     { name, date },
   settings:  { prec },            // タイム表示の小数桁 0〜3（表示のみ切り捨て。計算はms）
   classes:   ["IA", "IB", ...],   // イベントごとの参加クラス（①の「参加クラス設定」で登録。並び順＝結果表・スタートリストの表示順）
-  riders:    [{ uid, id, bib, name, kana, cls, tag, note }],
+  riders:    [{ uid, bib, name, kana, cls, tag, note }],
   startOrder:[uid, uid, ...],     // ②スタートリストの出走順（riders.uidの配列）
   runs:      [{ uid, rider /*riders.uid*/, sec, start, goal, status, note }],
 }
@@ -41,6 +41,7 @@ S = {
 - `status`: `OK`（完走）/ `DNF` / `DNS` / `DSQ`
 - runs は rider の `uid` で紐づける（BIBを変更しても記録が外れないように）。
 - 1ライダー×1セクション＝1レコード。同じBIB＋セクションを再入力した場合、空欄の項目は既存の値を残す（スタートとゴールを別々に入力できる）。
+- `riders[].id`（旧・自動採番ID）は廃止。BIBナンバーと役割が重複していたため。旧バックアップに `id` が残っていても単に無視される（データは消えない）。
 - `riders[].cls` はクラス名の文字列（`classes` 配列の値と一致させる）。未設定は空文字列。
 - `riders[].tag` は任意の文字列（将来のRFID／ICタグ用の拡張フィールド。現時点では重複チェックのみで、計測処理には使っていない）。
 - `classes` / `startOrder` が無い旧バックアップは、読み込み時に `app.js` の `migrate()` が補完する（`classes` は riders の `cls` から自動生成、`startOrder` は登録順）。構造の追加のみなので `version` は上げていない。
