@@ -15,7 +15,7 @@ const fmtClockFull=Core.fmtClockFull;
 const compute=()=>Core.compute(S);
 
 let S=blank();
-function blank(){return {version:2,event:{name:'',date:''},settings:{prec:2},classes:[],riders:[],startOrder:[],runs:[]};}
+function blank(){return {version:2,event:{name:'',date:''},settings:{prec:2},classes:[],riders:[],startOrder:[],startClassOrder:[],runs:[]};}
 
 /* ---------- 保存 ---------- */
 // 旧バックアップを補う：
@@ -25,9 +25,10 @@ function migrate(){
   if(!Array.isArray(S.classes))S.classes=[];
   S.classes=S.classes.map(c=>typeof c==='string'?{name:c,digit:null}:{name:c.name,digit:c.digit??null});
   if(!Array.isArray(S.startOrder))S.startOrder=[];
+  if(!Array.isArray(S.startClassOrder))S.startClassOrder=[];
   if(!S.classes.length&&S.riders.length)S.classes=[...new Set(S.riders.map(r=>r.cls).filter(Boolean))].sort(nat).map(name=>({name,digit:null}));
   S.version=2;
-  syncStartOrder();
+  syncStartClassOrder();syncStartOrder();
 }
 function load(){
   try{const t=localStorage.getItem(KEY);if(t){const d=JSON.parse(t);S=Object.assign(blank(),d);migrate();}}
@@ -89,6 +90,7 @@ function renameCls(i){
   if(v!==cur.name&&S.classes.some(c=>c.name===v)){alert(`クラス「${v}」は既に登録されています`);return;}
   const old=cur.name;cur.name=v;
   S.riders.forEach(r=>{if(r.cls===old)r.cls=v;});
+  S.startClassOrder=S.startClassOrder.map(n=>n===old?v:n);
   save();renderClasses();renderRiders();renderStartList();
 }
 function setClsDigit(i){
@@ -158,7 +160,7 @@ $('#rForm').onsubmit=e=>{
   else S.riders.push({uid:uid(),...v});
   const keepCls=v.cls;
   resetRiderForm();$('#r_cls').value=keepCls;autoFillBib();
-  syncStartOrder();save();renderRiders();renderStartList();$('#r_bib').focus();
+  syncStartClassOrder();syncStartOrder();save();renderRiders();renderStartList();$('#r_bib').focus();
 };
 function resetRiderForm(){
   editRider=null;$('#rForm').reset();
@@ -176,7 +178,7 @@ function delR(u){
   if(!confirm(`BIB ${r.bib} ${r.name} を削除しますか？${n?`\nタイム記録 ${n} 件も一緒に削除されます。`:''}`))return;
   S.riders=S.riders.filter(x=>x.uid!==u);S.runs=S.runs.filter(x=>x.rider!==u);
   if(editRider===u)resetRiderForm();
-  syncStartOrder();save();renderRiders();renderStartList();
+  syncStartClassOrder();syncStartOrder();save();renderRiders();renderStartList();
 }
 function renderRiders(){
   const q=$('#rFilter').value.trim().toLowerCase();
@@ -193,7 +195,17 @@ $('#rFilter').oninput=renderRiders;
 
 /* ---------- ② スタートリスト ---------- */
 // 出走順はS.startOrder（riders.uidの配列）で管理。ライダーの登録・削除に合わせて自動で追加／除外する。
-function defaultStartSort(a,b){return Core.clsComparator(S.classes)(a.cls||NOCLS,b.cls||NOCLS)||nat(a.bib,b.bib);}
+// クラスの出走順はS.startClassOrder（クラス名の配列。未設定は Core.NOCLS）で管理し、①の「参加クラス設定」の
+// 表示順（結果表用）とは別に、スタートリスト画面で▲▼のみで設定・変更できる。
+function defaultStartSort(a,b){return Core.clsComparator(S.startClassOrder)(a.cls||NOCLS,b.cls||NOCLS)||nat(a.bib,b.bib);}
+function syncStartClassOrder(){
+  const names=new Set(S.classes.map(c=>c.name));
+  if(S.riders.some(r=>!r.cls))names.add(NOCLS);
+  S.startClassOrder=S.startClassOrder.filter(n=>names.has(n));
+  const known=new Set(S.startClassOrder);
+  const missing=[...names].filter(n=>!known.has(n)).sort(Core.clsComparator(S.classes));
+  S.startClassOrder.push(...missing);
+}
 function syncStartOrder(){
   const ids=new Set(S.riders.map(r=>r.uid));
   S.startOrder=S.startOrder.filter(u=>ids.has(u));
@@ -207,14 +219,29 @@ function moveStart(u,dir){
   [S.startOrder[i],S.startOrder[j]]=[S.startOrder[j],S.startOrder[i]];
   save();renderStartList();
 }
+function moveStartClass(i,dir){
+  const j=i+dir;if(j<0||j>=S.startClassOrder.length)return;
+  [S.startClassOrder[i],S.startClassOrder[j]]=[S.startClassOrder[j],S.startClassOrder[i]];
+  S.startOrder=S.riders.slice().sort(defaultStartSort).map(r=>r.uid); // クラスの出走順通りに並び替え直す
+  save();renderStartList();
+}
 $('#btnStartReset').onclick=()=>{
-  if(S.startOrder.length&&!confirm('出走順を「クラス→BIB順」で初期化します。手動で並べ替えた順序は失われます。よろしいですか？'))return;
+  if(S.startOrder.length&&!confirm('出走順を「クラスの出走順→BIB順」で初期化します。手動で並べ替えた順序は失われます。よろしいですか？'))return;
   S.startOrder=S.riders.slice().sort(defaultStartSort).map(r=>r.uid);
   save();renderStartList();
 };
 $('#btnStartPrint').onclick=()=>{renderStartList();printTab('start');};
 // 並び替え（▲▼・初期化）はsave()済みの前提で呼ぶ。登録・削除側は先にsyncStartOrder()してから保存する。
+function renderStartClassOrder(){
+  const list=S.startClassOrder;
+  $('#startClsTable').innerHTML=`<tr><th class="c">出走順</th><th>クラス</th><th class="c">人数</th><th class="noprint"></th></tr>`+
+    list.map((name,i)=>`<tr><td class="c">${i+1}</td><td>${esc(name)}</td><td class="c">${S.riders.filter(r=>(r.cls||NOCLS)===name).length}</td>
+      <td class="noprint"><button class="b s" ${i===0?'disabled':''} onclick="moveStartClass(${i},-1)">▲</button>
+      <button class="b s" ${i===list.length-1?'disabled':''} onclick="moveStartClass(${i},1)">▼</button></td></tr>`).join('')+
+    (list.length?'':`<tr><td colspan="4" class="muted">クラスが登録されていません</td></tr>`);
+}
 function renderStartList(){
+  renderStartClassOrder();
   const list=S.startOrder.map(riderOf).filter(Boolean);
   $('#sCount').textContent=`出走予定 ${list.length} 名`;
   $('#sTitle').textContent=(S.event.name||'レース')+' スタートリスト';
@@ -405,7 +432,7 @@ $('#btnSample').onclick=()=>{
       S.runs.push(run);
     }
   }
-  syncStartOrder();save();renderAll();alert('サンプルデータを追加しました（12名・2セクション）');
+  syncStartClassOrder();syncStartOrder();save();renderAll();alert('サンプルデータを追加しました（12名・2セクション）');
 };
 $('#prec').onchange=e=>{S.settings.prec=+e.target.value;save();renderAll();};
 $('#evName').oninput=e=>{S.event.name=e.target.value;save();};

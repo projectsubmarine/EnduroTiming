@@ -76,12 +76,17 @@
 <!-- ② スタートリスト -->
 <section class="tab" id="tab-start">
   <div class="card noprint">
+    <h2 style="margin:0 0 8px;font-size:15px">クラスの出走順</h2>
+    <p class="hint" style="margin:0 0 8px">▲▼でクラスの出走順を入れ替えられます。各クラスの中はBIBナンバーの小さい順に出走します。</p>
+    <div class="tw"><table id="startClsTable"></table></div>
+  </div>
+  <div class="card noprint">
     <div class="btns">
       <strong id="sCount"></strong>
-      <button class="b" type="button" id="btnStartReset">並び順を初期化（クラス→BIB順）</button>
+      <button class="b" type="button" id="btnStartReset">並び順を初期化（クラスの出走順→BIB順）</button>
       <button class="b p" type="button" id="btnStartPrint" style="margin-left:auto">印刷・PDF保存</button>
     </div>
-    <p class="hint" style="margin-top:8px">▲▼ボタンで出走順を入れ替えられます。ライダーを登録・削除すると、一覧の末尾に自動で追加／除外されます。</p>
+    <p class="hint" style="margin-top:8px">個別に出走順を入れ替えたい場合は、下の一覧の▲▼ボタンでも調整できます。ライダーを登録・削除すると、一覧の末尾に自動で追加／除外されます。</p>
   </div>
   <div class="print-title"><h1 id="sTitle"></h1><div id="sSub"></div></div>
   <div class="tw"><table id="sTable"></table></div>

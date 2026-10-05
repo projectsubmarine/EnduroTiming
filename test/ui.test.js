@@ -171,6 +171,31 @@ test('スタートリスト：並び順の初期化（クラス→BIB順）・�
   assert.deepEqual(ui.errors, []);
 });
 
+test('クラスの出走順：①の参加クラス設定（結果表の表示順）とは別に、▲▼で設定・変更できる', { skip: !JSDOM && 'jsdom 未インストール（npm install）' }, () => {
+  const ui = open();
+  ui.rider('101', 'イチ', 'IA'); // IAが先に登録される → S.classesはIA,IB順
+  ui.rider('201', 'ニ', 'IB');
+  ui.rider('102', 'サン', 'IA');
+  assert.deepEqual(ui.state().classes.map(c => c.name), ['IA', 'IB']);
+  assert.deepEqual(ui.state().startClassOrder, ['IA', 'IB']); // 初期値はクラス設定順に揃う
+
+  ui.w.moveStartClass(0, 1); // クラスの出走順だけをIB→IAに入れ替える
+  const S1 = ui.state();
+  assert.deepEqual(S1.startClassOrder, ['IB', 'IA']);
+  assert.deepEqual(S1.classes.map(c => c.name), ['IA', 'IB']); // ①の表示順は変わらない（結果表はIA→IBのまま）
+
+  const bibsOf = () => { const S = ui.state(); return S.startOrder.map(u => S.riders.find(r => r.uid === u).bib); };
+  assert.deepEqual(bibsOf(), ['201', '101', '102']); // 出走順はIBクラス→IAクラス(BIB昇順)に即時反映される
+
+  ui.$('#btnStartReset').click(); // 初期化も「クラスの出走順」を使う（①の表示順ではない）
+  assert.deepEqual(bibsOf(), ['201', '101', '102']);
+
+  ui.w.prompt = () => 'IB改';
+  ui.w.renameCls(1); // IB→IB改。クラスの出走順にも反映される
+  assert.deepEqual(ui.state().startClassOrder, ['IB改', 'IA']);
+  assert.deepEqual(ui.errors, []);
+});
+
 test('サンプルデータ投入でエラーが出ない', { skip: !JSDOM && 'jsdom 未インストール（npm install）' }, () => {
   const ui = open();
   ui.$('#btnSample').click();
