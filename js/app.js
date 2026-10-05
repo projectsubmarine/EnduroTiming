@@ -416,16 +416,16 @@ function cellSec(o){
 }
 function tableHtml(list,secs,mode){
   const main=mode==='ovr'?'ovr':'clsR',sub=mode==='ovr'?'clsR':'ovr';
-  const head=`<tr><th class="c">${mode==='ovr'?'総合':'順位'}</th><th class="c">${mode==='ovr'?'クラス順位':'総合'}</th><th>BIB</th><th>氏名</th>${mode==='ovr'?'<th>クラス</th>':''}
-    ${secs.map(s=>`<th class="n">S${esc(s)}</th>`).join('')}<th class="c">区間数</th><th class="n">合計タイム</th><th class="n">トップ差</th><th>特記事項</th></tr>`;
-  const body=list.map(x=>{
+  const head=`<thead><tr><th class="c">${mode==='ovr'?'総合':'順位'}</th><th class="c">${mode==='ovr'?'クラス順位':'総合'}</th><th>BIB</th><th>氏名</th>${mode==='ovr'?'<th>クラス</th>':''}
+    ${secs.map(s=>`<th class="n">S${esc(s)}</th>`).join('')}<th class="c">区間数</th><th class="n">合計タイム</th><th class="n">トップ差</th><th>特記事項</th></tr></thead>`;
+  const body=`<tbody>${list.map(x=>{
     const rk=x[main];
     return `<tr class="${x.ranked&&rk<=3?'r'+rk:''}"><td class="c"><b>${x.ranked?rk:`<span class="tag t-${x.label in STATUS?x.label:'DNS'}">${esc(x.label)}</span>`}</b></td>
       <td class="c">${x.ranked?(x[sub]??''):''}</td><td><b>${esc(x.rd.bib)}</b></td>
       <td>${esc(x.rd.name)}${x.rd.kana?`<div class="kana">${esc(x.rd.kana)}</div>`:''}</td>${mode==='ovr'?`<td>${esc(x.cls)}</td>`:''}
       ${secs.map(s=>`<td class="n">${cellSec(x.bySec[s])}</td>`).join('')}
       <td class="c">${x.n}</td><td class="n"><b>${x.ranked?fmtDur(x.total):''}</b></td><td class="n">${x.ranked?x[main+'Gap']:''}</td>
-      <td class="note">${esc(x.notes)}</td></tr>`;}).join('');
+      <td class="note">${esc(x.notes)}</td></tr>`;}).join('')}</tbody>`;
   return `<div class="tw"><table>${head}${body}</table></div>`;
 }
 $('#resView').onchange=renderResults;

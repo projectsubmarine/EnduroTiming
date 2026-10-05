@@ -17,7 +17,9 @@ css/style.css   スタイル（印刷用 @media print を含む。A4横）
 js/core.js      計算ロジック（DOMに依存しない純粋関数）。ブラウザでは window.Core、Nodeでは require
 js/app.js       画面処理。状態は変数 S に集約 → 変更したら save() → render*()
 test/           node:test のテスト。core.test.js は依存なし、ui.test.js は jsdom を使う
-docs/manual.md  操作マニュアル（下書き。詳細・スクリーンショットは今後追記）
+docs/manual.md  操作マニュアル（テキスト版・下書き。現場の注意点は今後追記）
+docs/manual.html 操作マニュアル（印刷用・スクリーンショット付き。段階ごとに1ページ、A4縦）
+docs/images/    操作マニュアル用のスクリーンショット（manual.htmlから参照。再撮影の手順は下記）
 ```
 新しい計算・変換処理（CSV取り込みなど）は **core.js に置いてテストを書く**。app.js はDOMとのつなぎだけにする。
 
@@ -77,6 +79,7 @@ S = {
 - DSQ を1つでも含むライダーは順位なし。有効区間0のライダーは DNF / DNS / 計測中 / 記録なし と表示。
 - トップ差：区間数が少ない場合は「-n区間」と表示。
 - 実装は `Core.compute()`。変更したら `test/core.test.js` も更新する。
+- 「クラス別（全クラス）」表示を印刷すると、**クラスごとに改ページ**する（`css/style.css` の `.cls-block + .cls-block{break-before:page}`）。1クラスの人数が多く1ページに収まらない場合は、そのクラスだけ複数ページに分かれる（見出し行はページごとに繰り返す。`js/app.js` の `tableHtml()` が `<thead>` で出力）。総合順位表示は改ページしない。
 
 ## 今後の予定（優先順は未定）
 - 計測システムが出力するCSVの取り込み（start/goal時刻を含む。列の対応付けを画面で設定）。出力形式はユーザーが確認中。
@@ -85,7 +88,15 @@ S = {
 - 手書きメモからの入力をさらに速くする（BIB → 時刻を連続で入力するモード）
 - RFID等によるユニークID計測の簡略化：`riders[].tag` フィールドを拡張用に用意済み（現状は手入力・重複チェックのみ）。実際にリーダー等と連携する場合は、`tag` からBIBを引いて②タイム入力の自動入力などにつなげる想定
 - 複数端末で使いたくなったら：ローカルサーバー（Node または Python ＋ SQLite）版を検討。その場合も core.js はそのまま使えるように保つ
-- 操作マニュアル（`docs/manual.md`）の内容を大会運用に合わせて充実させる（スクリーンショット・現場での注意点など）
+- 操作マニュアル（`docs/manual.md` / `docs/manual.html`）の現場での注意点（TODO）を大会運用に合わせて充実させる
+
+## 操作マニュアルのスクリーンショットを撮り直す
+`docs/images/*.png` は `index.html` を実ブラウザ（system Chrome。`playwright-core` の `executablePath` に
+`/Applications/Google Chrome.app/Contents/MacOS/Google Chrome` を指定し、使い捨てのuserDataDirで起動）で操作して撮影したもの。
+画面を変更してスクリーンショットが古くなったら、同様に Playwright（`chromium.launchPersistentContext`）でタブを操作して撮り直し、
+`docs/images/` を上書きする。印刷イメージは `window.print()` を呼ばず、`document.body.dataset.print` を直接セットしてから
+`page.emulateMedia({media:'print'})` で代用する（headless実行では `window.print()` の挙動が不安定なため）。
+各画像は撮りたい範囲だけを `page.screenshot({clip:{...}})` で切り出す（不要な余白や他の要素が写り込まないように）。
 
 ## 作業の約束
 - 変更後は `npm test` を通す。画面を変えたら `index.html` をブラウザで開いて確認する。

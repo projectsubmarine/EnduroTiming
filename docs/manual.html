@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>操作マニュアル</title>
+<style>
+  :root{--bg:#f4f5f7;--card:#fff;--ink:#1d2330;--muted:#6b7280;--line:#dde1e6;--accent:#1f5fd1;--accent-soft:#e8effc}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:"Hiragino Sans","Yu Gothic UI","Meiryo",sans-serif;background:var(--bg);color:var(--ink);font-size:14px;line-height:1.7}
+  .topbar{background:#1d2330;color:#fff;padding:14px 20px}
+  .topbar h1{margin:0;font-size:18px;letter-spacing:.05em}
+  .topbar p{margin:4px 0 0;font-size:12px;color:#aab3c2}
+  .wrap{max-width:900px;margin:24px auto;padding:0 16px 60px}
+  .page{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:20px 26px 24px;margin-bottom:28px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+  .page .step{display:inline-block;background:var(--accent);color:#fff;font-weight:bold;font-size:12px;border-radius:4px;padding:2px 8px;margin-bottom:8px;letter-spacing:.05em}
+  .page h1{margin:0 0 14px;font-size:19px;border-bottom:3px solid var(--accent);padding-bottom:8px}
+  .shots{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px;justify-content:center}
+  .shot{flex:0 1 auto;border:1px solid var(--line);border-radius:6px;overflow:hidden;background:#fff;max-width:100%}
+  .shot .cap{font-size:11px;color:var(--muted);padding:5px 8px;border-top:1px solid var(--line);background:#fff}
+  .shot img{display:block;height:230px;width:auto;max-width:100%}
+  .shot.tall img{height:300px}
+  .shot.short img{height:170px}
+  ul.steps{margin:0;padding-left:20px}
+  ul.steps li{margin-bottom:6px}
+  ul.steps b{font-weight:bold}
+  .note{background:var(--accent-soft);border-radius:6px;padding:8px 12px;font-size:12.5px;color:#1d4ed8;margin-top:12px}
+  .muted{color:var(--muted);font-size:12px}
+  .toc{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px 22px;margin-bottom:28px}
+  .toc h2{margin:0 0 10px;font-size:15px}
+  .toc ol{margin:0;padding-left:22px}
+  .toc li{margin-bottom:4px}
+  .doctitle{font-size:11px;color:var(--muted);margin-bottom:6px}
+
+  @media print{
+    @page{size:A4 portrait;margin:12mm}
+    body{background:#fff}
+    .topbar,.toc .muted,.noprint{display:none!important}
+    .wrap{max-width:none;margin:0;padding:0}
+    .toc{border:0;box-shadow:none;break-after:page;padding:0}
+    .page{border:0;box-shadow:none;border-radius:0;padding:0;margin:0;break-after:page}
+    .page:last-child{break-after:auto}
+    .shots{gap:8px}
+    .shot img{height:170px}
+    .shot.tall img{height:220px}
+    .shot.short img{height:130px}
+  }
+</style>
+</head>
+<body>
+<div class="topbar noprint">
+  <h1>レース計時集計 操作マニュアル</h1>
+  <p>画面の流れに沿って、①事前準備 → ②クラス・ライダー登録 → ③スタートリスト → ④タイム入力 → ⑤結果確認・印刷 → ⑥データ管理 の順に、1段階＝1ページでまとめています。印刷してそのまま配布できます。</p>
+</div>
+<div class="wrap">
+
+<div class="toc">
+  <div class="doctitle">レース計時集計 操作マニュアル</div>
+  <h2>もくじ</h2>
+  <ol>
+    <li>事前準備</li>
+    <li>クラス設定・ライダー登録（CSV取り込みを含む）</li>
+    <li>スタートリストの作成</li>
+    <li>タイム入力（計測）</li>
+    <li>結果確認・印刷</li>
+    <li>データ管理・バックアップ（計測後の処理）</li>
+  </ol>
+  <p class="muted">詳しい仕様は <code>docs/manual.md</code>、開発者向けの情報は <code>CLAUDE.md</code> を参照してください。</p>
+</div>
+
+<!-- 1. 事前準備 -->
+<section class="page">
+  <div class="doctitle">レース計時集計 操作マニュアル</div>
+  <span class="step">STEP 1</span>
+  <h1>事前準備</h1>
+  <div class="shots">
+    <div class="shot tall">
+      <img src="images/00-setup.png" alt="大会名・開催日を入力した画面">
+      <div class="cap">起動直後の画面。大会名と開催日を入力したところ</div>
+    </div>
+  </div>
+  <ul class="steps">
+    <li><b>index.html をダブルクリック</b>して開く（Chrome / Edge 推奨）。インストール・インターネット接続は不要。</li>
+    <li>画面いちばん上の濃紺のバーで「<b>大会名</b>」「<b>開催日</b>」を入力する。あとからいつでも変更できる。</li>
+    <li>入力したデータはブラウザに自動保存される（右上に保存時刻が出る）。ただし <b>ブラウザの履歴・サイトデータを消すと消えてしまう</b> ので、大会の前後は必ずバックアップを書き出す（STEP 6）。</li>
+    <li>動作確認だけしたい場合は、データ管理タブの「サンプルデータを入れる」で12名分のダミーデータが入る。</li>
+  </ul>
+  <div class="note">当日の持ち物・端末の配置（受付／スタート／計測ポイント／本部）は、大会ごとに別途メモしておくと安心です。</div>
+</section>
+
+<!-- 2. クラス設定・ライダー登録 -->
+<section class="page">
+  <div class="doctitle">レース計時集計 操作マニュアル</div>
+  <span class="step">STEP 2</span>
+  <h1>① クラス設定・ライダー登録</h1>
+  <div class="shots">
+    <div class="shot tall">
+      <img src="images/01-classes-riders.png" alt="参加クラス設定とライダー登録画面">
+      <div class="cap">参加クラス設定（上）とライダー登録フォーム・一覧（下）</div>
+    </div>
+    <div class="shot small">
+      <img src="images/06-csv-import.png" alt="CSV取り込みの列の対応付け画面">
+      <div class="cap">CSVから取り込む場合の列の対応付け画面</div>
+    </div>
+  </div>
+  <ul class="steps">
+    <li><b>「参加クラス設定」</b>で、その大会の参加クラス（例：IA、IB、ビギナー…）を登録する。クラスはイベントごとに変えられる。</li>
+    <li>「BIB先頭の数字」（1〜9、任意）を設定すると、BIBナンバー（3桁・100〜999、下2桁00は使用しない）の100の位でそのクラスが分かるようになる（例：IA＝1→101〜199）。</li>
+    <li>ライダー登録で参加クラスを選ぶと、その番号帯の中で未使用の最小番号がBIB欄に自動入力される。氏名を入力してEnter（または「登録」）。</li>
+    <li>申込システムなどの<b>CSVファイル（氏名・読み仮名）</b>があれば「CSVから取り込む」で一括登録できる。列の対応付けを画面で選び、取り込み後は一覧の「編集」からBIB・クラスを1件ずつ設定する。</li>
+  </ul>
+</section>
+
+<!-- 3. スタートリスト -->
+<section class="page">
+  <div class="doctitle">レース計時集計 操作マニュアル</div>
+  <span class="step">STEP 3</span>
+  <h1>② スタートリストの作成</h1>
+  <div class="shots">
+    <div class="shot">
+      <img src="images/02-start-list.png" alt="スタートリスト画面（通常表示）">
+      <div class="cap">スタートリスト画面：クラスの出走順＋出走リスト</div>
+    </div>
+    <div class="shot">
+      <img src="images/02b-start-list-print.png" alt="スタートリストの印刷イメージ">
+      <div class="cap">「印刷・PDF保存」を押したときの印刷イメージ</div>
+    </div>
+  </div>
+  <ul class="steps">
+    <li>画面上部の<b>「クラスの出走順」</b>を▲▼で設定する（①の参加クラス設定の表示順とは別管理）。各クラスの中は自動でBIBナンバーの小さい順になる。</li>
+    <li>下の出走リストは「クラスの出走順→BIBの順」で自動的に並ぶ。「並び順を初期化」でいつでもこの順番に戻せる。</li>
+    <li>個々のライダーを入れ替えたい場合は、一覧の▲▼で手動調整できる。ライダーの登録・削除に合わせて一覧も自動更新される。</li>
+    <li>「印刷・PDF保存」で、スタッフが現場で使う紙の出走リストを作成する。</li>
+  </ul>
+</section>
+
+<!-- 4. タイム入力 -->
+<section class="page">
+  <div class="doctitle">レース計時集計 操作マニュアル</div>
+  <span class="step">STEP 4</span>
+  <h1>③ タイム入力（計測）</h1>
+  <div class="shots">
+    <div class="shot tall">
+      <img src="images/03-time-entry.png" alt="タイム入力画面">
+      <div class="cap">タイム入力フォームと記録一覧</div>
+    </div>
+  </div>
+  <ul class="steps">
+    <li>BIBナンバー・セクション#・スタート時刻・ゴール時刻・状態（完走／DNF／DNS／DSQ）を入力して登録する。</li>
+    <li>時刻は <code>10:05:23.45</code> と <code>100523.45</code> のどちらの形式でも入力できる（全角数字も可）。</li>
+    <li>スタートとゴールは<b>別々に入力してよい</b>（先にスタートだけ記録→あとでゴールを追記、が可能）。同じBIB・セクションに再入力した場合、空欄の項目は既存の値を残す。</li>
+    <li>完走できなかった場合は状態をDNF／DNS／DSQに変更し、必要なら特記事項（転倒など）を記録する。</li>
+  </ul>
+  <div class="note">入力するたびに④結果・順位がリアルタイムに更新されるので、都度の確認にも使えます。</div>
+</section>
+
+<!-- 5. 結果確認・印刷 -->
+<section class="page">
+  <div class="doctitle">レース計時集計 操作マニュアル</div>
+  <span class="step">STEP 5</span>
+  <h1>④ 結果確認・印刷</h1>
+  <div class="shots">
+    <div class="shot">
+      <img src="images/04-results.png" alt="結果・順位画面（通常表示）">
+      <div class="cap">結果・順位画面：クラス別順位の表示例</div>
+    </div>
+    <div class="shot">
+      <img src="images/04b-results-print.png" alt="結果の印刷イメージ">
+      <div class="cap">「印刷・PDF保存」を押したときの印刷イメージ</div>
+    </div>
+  </div>
+  <ul class="steps">
+    <li>「表示」で総合順位／クラス別（全クラス）／クラスごとの表示を切り替えられる。入力した記録はリアルタイムに反映される。</li>
+    <li>順位ルール：<b>①完走したセクション数が多い順 → ②合計タイムが短い順</b>。DSQ（失格）が1つでもあるライダーは順位なし。合計タイムが同じ場合は同順位。</li>
+    <li>「印刷・PDF保存」でその場で成績表を印刷・PDF化できる。「結果をCSVで保存」でCSVとしても出力できる。</li>
+    <li>「クラス別（全クラス）」を印刷すると、<b>クラスごとに改ページ</b>される。1クラスの人数が多く1ページに収まらない場合は、そのクラスだけ複数ページに分かれる（見出し行は各ページに繰り返し表示される）。</li>
+  </ul>
+</section>
+
+<!-- 6. データ管理・バックアップ -->
+<section class="page">
+  <div class="doctitle">レース計時集計 操作マニュアル</div>
+  <span class="step">STEP 6</span>
+  <h1>データ管理・バックアップ（計測後の処理）</h1>
+  <div class="shots">
+    <div class="shot short">
+      <img src="images/05-data-management.png" alt="データ管理画面">
+      <div class="cap">データ管理タブ：バックアップ・表示設定・その他</div>
+    </div>
+  </div>
+  <ul class="steps">
+    <li>データはブラウザ内に自動保存されるが、<b>ブラウザの履歴やサイトデータを消すと消えてしまう。</b></li>
+    <li>大会の<b>前後には必ず「バックアップを書き出す（.json）」</b>を実行する。レース直後のバックアップが最終成績の控えになる。</li>
+    <li>別のPCへ移すときは、フォルダごとコピーしてから「バックアップを読み込む」で .json ファイルを読み込む。</li>
+    <li>「全データをCSVで保存」で、表計算ソフトでも確認できる形式に書き出せる（控え・提出用など）。</li>
+    <li>「全データを消去」は元に戻せない。必ず先にバックアップを書き出してから使うこと。</li>
+  </ul>
+</section>
+
+</div>
+</body>
+</html>

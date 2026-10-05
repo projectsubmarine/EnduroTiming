@@ -54,7 +54,9 @@ tr.r1 td{background:var(--g1)}tr.r2 td{background:var(--g2)}tr.r3 td{background:
   .print-title h1{font-size:18px;margin:0}
   th{position:static}
   th,td{padding:3px 5px}
-  .cls-block{break-inside:avoid}
+  .cls-h{break-after:avoid}
+  .cls-block + .cls-block{break-before:page}
+  thead{display:table-header-group}
   .tab{display:none!important}
   body[data-print="res"] #tab-res{display:block!important}
   body[data-print="start"] #tab-start{display:block!important}
