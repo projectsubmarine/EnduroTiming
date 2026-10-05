@@ -1,0 +1,23 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Office 一時ファイル
+~$*.docx
+~$*.xlsx
+~$*.pptx
+
+# エディタ
+.sublime-workspace
+*.swp
+*.sas7bdat
+
+# ログ・一時ファイル
+*.log
+*.tmp
+*.bak
+
+# 環境変数・機密情報
+.env
+secrets.*

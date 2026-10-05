@@ -1,0 +1,12 @@
+{
+  "name": "mtb-enduro-timer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MTBエンデューロ用 タイム集計ツール（ブラウザで動くスタンドアロン版）",
+  "scripts": {
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "jsdom": "^26.0.0"
+  }
+}

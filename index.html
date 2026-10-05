@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>レース計時集計</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header>
+  <h1>レース計時集計</h1>
+  <input id="evName" placeholder="大会名" size="22">
+  <input id="evDate" type="date">
+  <span class="status" id="status"></span>
+</header>
+<nav>
+  <button data-tab="riders" class="on">① ライダー登録</button>
+  <button data-tab="times">② タイム入力</button>
+  <button data-tab="res">③ 結果・順位</button>
+  <button data-tab="data">データ管理</button>
+</nav>
+<main>
+
+<!-- ① ライダー登録 -->
+<section class="tab on" id="tab-riders">
+  <div class="card">
+    <h2 id="rFormTitle">ライダー登録</h2>
+    <form id="rForm" autocomplete="off">
+      <div class="grid">
+        <label>ID<input id="r_id" placeholder="空欄で自動採番"></label>
+        <label>BIBナンバー *<input id="r_bib" required></label>
+        <label>氏名 *<input id="r_name" required></label>
+        <label>読み仮名<input id="r_kana"></label>
+        <label>参加クラス<input id="r_cls" list="clsList"></label>
+        <label class="wide">特記事項<input id="r_note"></label>
+      </div>
+      <div class="btns" style="margin-top:12px">
+        <button class="b p" type="submit" id="rSubmit">登録</button>
+        <button class="b" type="button" id="rCancel" hidden>編集をやめる</button>
+        <span class="hint">Enterで次の欄へ。最後の欄でEnterを押すと登録します。</span>
+      </div>
+    </form>
+  </div>
+  <div class="card">
+    <div class="btns" style="margin-bottom:10px">
+      <strong id="rCount"></strong>
+      <input id="rFilter" placeholder="検索（BIB・氏名・クラス）" style="margin-left:auto;width:220px">
+    </div>
+    <div class="tw"><table id="rTable"></table></div>
+  </div>
+</section>
+
+<!-- ② タイム入力 -->
+<section class="tab" id="tab-times">
+  <div class="card">
+    <h2 id="tFormTitle">タイム入力</h2>
+    <form id="tForm" autocomplete="off">
+      <div class="grid">
+        <label>BIBナンバー *<input id="t_bib" required></label>
+        <label>セクション# *<input id="t_sec" value="1" required></label>
+        <label>スタート時刻<input id="t_start" placeholder="10:05:23.45"></label>
+        <label>ゴール時刻<input id="t_goal" placeholder="10:12:08.10"></label>
+        <label>状態<select id="t_status">
+          <option value="OK">完走</option><option value="DNF">DNF（リタイア）</option>
+          <option value="DNS">DNS（未出走）</option><option value="DSQ">DSQ（失格）</option></select></label>
+        <label class="wide">特記事項<input id="t_note"></label>
+      </div>
+      <div class="info" id="tInfo"></div>
+      <div class="btns">
+        <button class="b p" type="submit" id="tSubmit">登録</button>
+        <button class="b" type="button" id="tCancel" hidden>編集をやめる</button>
+        <span class="hint">時刻は「10:05:23.45」「100523.45」どちらの形式でも入力できます（全角も可）。<br>同じBIB・セクションの記録がある場合、空欄の項目は既存の値を残します（スタートだけ先に入力→後でゴールを入力、が可能）。</span>
+      </div>
+    </form>
+  </div>
+  <div class="card">
+    <div class="btns" style="margin-bottom:10px">
+      <strong id="tCount"></strong>
+      <input id="tFilter" placeholder="絞り込み（BIB・氏名・セクション）" style="margin-left:auto;width:220px">
+    </div>
+    <div class="tw"><table id="tTable"></table></div>
+  </div>
+</section>
+
+<!-- ③ 結果 -->
+<section class="tab" id="tab-res">
+  <div class="card noprint">
+    <div class="btns">
+      <label style="flex-direction:row;align-items:center;gap:8px">表示
+        <select id="resView"></select></label>
+      <button class="b p" id="btnPrint">印刷・PDF保存</button>
+      <button class="b" id="btnResCsv">結果をCSVで保存</button>
+    </div>
+    <p class="hint" style="margin:10px 0 0">順位のルール：①完走したセクションの数が多い順 → ②合計タイムが短い順。DSQ（失格）の記録が1つでもあるライダーは順位を付けません。合計タイムが同じ場合は同順位です。</p>
+  </div>
+  <div class="print-title"><h1 id="pTitle"></h1><div id="pSub"></div></div>
+  <div id="resArea"></div>
+</section>
+
+<!-- データ管理 -->
+<section class="tab" id="tab-data">
+  <div class="card">
+    <h2>バックアップ</h2>
+    <p class="hint">データはこのブラウザ内に自動で保存されます。ただし、ブラウザの履歴を消すと消えてしまいます。大会の前後には、必ずバックアップファイルを書き出してください。</p>
+    <div class="btns">
+      <button class="b p" id="btnJsonOut">バックアップを書き出す（.json）</button>
+      <button class="b" id="btnJsonIn">バックアップを読み込む</button>
+      <input type="file" id="fileIn" accept=".json,application/json" hidden>
+      <button class="b" id="btnAllCsv">全データをCSVで保存</button>
+    </div>
+  </div>
+  <div class="card">
+    <h2>表示設定</h2>
+    <label style="max-width:240px">タイムの表示桁数
+      <select id="prec"><option value="0">1秒</option><option value="1">1/10秒</option><option value="2">1/100秒</option><option value="3">1/1000秒</option></select></label>
+    <p class="hint">表示桁数より細かい部分は切り捨てます。順位計算は、入力された精度のまま行います。</p>
+  </div>
+  <div class="card">
+    <h2>その他</h2>
+    <div class="btns">
+      <button class="b" id="btnSample">サンプルデータを入れる（動作確認用）</button>
+      <button class="b d" id="btnClear">全データを消去</button>
+    </div>
+  </div>
+</section>
+</main>
+<datalist id="clsList"></datalist>
+
+<script src="js/core.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
