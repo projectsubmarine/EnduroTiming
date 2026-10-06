@@ -21,6 +21,8 @@ docs/manual.md  操作マニュアル（テキスト版・下書き。現場の�
 docs/manual.html 操作マニュアル（印刷用・スクリーンショット付き。段階ごとに1ページ、A4縦）
 docs/images/    操作マニュアル用のスクリーンショット（manual.htmlから参照。再撮影の手順は下記）
 ```
+**公開URL（GitHub Pages）**：https://projectsubmarine.github.io/EnduroTiming/ — リポジトリは PUBLIC。`main` ブランチのルートを配信しており、push すると自動で再公開される（1分程度）。静的ページのまま（データは各ブラウザの localStorage のみ。file:// 版とは保存先が別）。コミットしたものはすべて公開されるので、実在の参加者データ（`samples/` 等）はコミットしない。
+
 新しい計算・変換処理（CSV取り込みなど）は **core.js に置いてテストを書く**。app.js はDOMとのつなぎだけにする。
 
 ## コマンド
