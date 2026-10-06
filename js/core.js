@@ -223,9 +223,73 @@
     return rows;
   }
 
+  /**
+   * 他端末（各走行セクションを個別に計測するPCなど）のバックアップデータを、現在の状態に
+   * 「タイム記録（runs）だけ」マージする。ライダー登録・クラス設定などは変更しない。
+   *
+   * 対応付けは rider の uid 優先（本部で配布した名簿をそのまま読み込んだ端末なら一致する）。
+   * uid が一致しない場合（セクション側で独自に追加したライダーなど）は、incoming側の riders から
+   * BIBを引いて、現在の riders をBIBで探す（本部で後から同じBIBのライダーを登録していれば救済できる）。
+   * どちらにも一致しなければ unmatched に積んで取り込まない（データを失わないため、現在のstateは変更しない）。
+   *
+   * 既存の記録が空欄の項目は、取り込んだ値で埋める（merged）。start/goalの両方に値があり、既存と
+   * 取り込み側で異なる場合は上書きせず conflicts に積む（その記録はまるごと変更しない）。
+   * 既存と完全に同じ内容なら unchanged。新規の(rider,sec)の組み合わせなら added。
+   *
+   * @param {object} state 現在の状態（{riders, runs} を含む）。このオブジェクト自体は変更しない。
+   * @param {object} incoming 取り込むデータ（{riders, runs} を含む。バックアップJSON全体でよい）
+   * @param {() => string} [mkUid] 新規runに使うuid生成関数（省略時は内蔵の簡易生成器）
+   * @returns {{runs:object[], added:number, merged:number, unchanged:number,
+   *            conflicts:{bib,name,sec}[], unmatched:{bib,name,sec}[]}}
+   */
+  function mergeSectionData(state, incoming, mkUid) {
+    const genUid = mkUid || (() => Date.now().toString(36) + Math.random().toString(36).slice(2, 7));
+    const riders = state.riders || [];
+    const byUid = new Map(riders.map(r => [r.uid, r]));
+    const byBib = new Map(riders.map(r => [String(r.bib), r]));
+    const inRidersByUid = new Map((incoming.riders || []).map(r => [r.uid, r]));
+
+    const runs = (state.runs || []).map(r => ({ ...r }));
+    const keyOf = (riderUid, sec) => riderUid + '\u0000' + sec;
+    const byKey = new Map(runs.map(r => [keyOf(r.rider, r.sec), r]));
+
+    let added = 0, merged = 0, unchanged = 0;
+    const conflicts = [], unmatched = [];
+
+    for (const inRun of (incoming.runs || [])) {
+      const inRider = inRidersByUid.get(inRun.rider);
+      const rider = byUid.get(inRun.rider) || (inRider && byBib.get(String(inRider.bib)));
+      if (!rider) {
+        unmatched.push({ bib: inRider ? inRider.bib : '?', name: inRider ? inRider.name : '', sec: inRun.sec });
+        continue;
+      }
+      const existing = byKey.get(keyOf(rider.uid, inRun.sec));
+      if (!existing) {
+        const row = { uid: genUid(), rider: rider.uid, sec: inRun.sec, start: inRun.start ?? null,
+          goal: inRun.goal ?? null, status: inRun.status || 'OK', note: inRun.note || '' };
+        runs.push(row); byKey.set(keyOf(rider.uid, inRun.sec), row);
+        added++;
+        continue;
+      }
+      const conflict = (inRun.start != null && existing.start != null && inRun.start !== existing.start)
+                     || (inRun.goal != null && existing.goal != null && inRun.goal !== existing.goal);
+      if (conflict) {
+        conflicts.push({ bib: rider.bib, name: rider.name, sec: inRun.sec });
+        continue;
+      }
+      let changed = false;
+      if (existing.start == null && inRun.start != null) { existing.start = inRun.start; changed = true; }
+      if (existing.goal == null && inRun.goal != null) { existing.goal = inRun.goal; changed = true; }
+      if (inRun.status && inRun.status !== existing.status) { existing.status = inRun.status; changed = true; }
+      if (inRun.note && inRun.note !== existing.note) { existing.note = inRun.note; changed = true; }
+      if (changed) merged++; else unchanged++;
+    }
+    return { runs, added, merged, unchanged, conflicts, unmatched };
+  }
+
   const Core = {
     DAY_MS, NOCLS, STATUS, nat, z2h, parseClock, fmtClock, fmtClockFull, fmtDur, elapsed, compute, csvCell, toCsv, parseCsv,
-    clsComparator, isValidBib, bibRange, classForBib, nextBibInClass,
+    clsComparator, isValidBib, bibRange, classForBib, nextBibInClass, mergeSectionData,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = Core;
   else root.Core = Core;

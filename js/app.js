@@ -473,6 +473,26 @@ $('#fileIn').onchange=e=>{
   rd.readAsText(f);e.target.value='';
 };
 
+/* ---------- セクション記録の取り込み（マージ） ---------- */
+// 各セクション端末（本部で配った名簿を読み込んだ同じツール）のバックアップを、
+// runs（タイム記録）だけ現在のデータに追加・統合する。ライダー・クラス設定などは変更しない。
+$('#btnSectionImport').onclick=()=>$('#sectionFileIn').click();
+$('#sectionFileIn').onchange=e=>{
+  const f=e.target.files[0];if(!f)return;const rd=new FileReader();
+  rd.onload=()=>{try{
+    const d=JSON.parse(rd.result);if(!Array.isArray(d.runs))throw 0;
+    if(!confirm(`セクション記録を取り込みます（記録 ${d.runs.length} 件）。よろしいですか？`))return;
+    const r=Core.mergeSectionData(S,d,uid);
+    S.runs=r.runs;
+    syncStartClassOrder();syncStartOrder();save();renderAll();
+    let msg=`取り込みました。\n追加：${r.added}件　更新：${r.merged}件　変更なし：${r.unchanged}件`;
+    if(r.conflicts.length)msg+=`\n⚠ 競合のため反映しなかった記録：${r.conflicts.length}件（本部に既にある記録と時刻が異なります。「③タイム入力」で該当のBIB・セクションをご確認ください）`;
+    if(r.unmatched.length)msg+=`\n⚠ 対応するライダーが見つからなかった記録：${r.unmatched.length}件（先に「①ライダー登録」でそのBIBを登録してから、もう一度取り込んでください）`;
+    alert(msg);
+  }catch(_){alert('このファイルは読み込めません（形式が違います）');}};
+  rd.readAsText(f);e.target.value='';
+};
+
 /* ---------- その他 ---------- */
 $('#btnClear').onclick=()=>{
   if(!confirm('全データ（ライダー・記録）を消去します。元に戻せません。\n先にバックアップを書き出しましたか？'))return;

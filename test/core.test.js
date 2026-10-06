@@ -161,3 +161,63 @@ test('parseCsv: 空文字・空行のみは空配列を返す', () => {
   assert.deepEqual(C.parseCsv(''), []);
   assert.deepEqual(C.parseCsv('\n\n'), []);
 });
+
+function mkUidSeq() { let i = 0; return () => 'new' + (++i); }
+
+test('mergeSectionData: uid一致で新規runを追加する', () => {
+  const st = { riders: [{ uid: 'a', bib: '101', name: 'A' }], runs: [] };
+  const incoming = {
+    riders: [{ uid: 'a', bib: '101', name: 'A' }],
+    runs: [{ uid: 'x1', rider: 'a', sec: '1', start: T(10, 0, 0), goal: T(10, 5, 0), status: 'OK', note: '' }],
+  };
+  const r = C.mergeSectionData(st, incoming, mkUidSeq());
+  assert.equal(r.added, 1); assert.equal(r.merged, 0); assert.equal(r.unchanged, 0);
+  assert.deepEqual(r.conflicts, []); assert.deepEqual(r.unmatched, []);
+  assert.deepEqual(r.runs, [{ uid: 'new1', rider: 'a', sec: '1', start: T(10, 0, 0), goal: T(10, 5, 0), status: 'OK', note: '' }]);
+});
+
+test('mergeSectionData: 既存の空欄を取り込み側の値で埋める（merged）', () => {
+  const st = {
+    riders: [{ uid: 'a', bib: '101', name: 'A' }],
+    runs: [{ uid: 'r1', rider: 'a', sec: '1', start: T(10, 0, 0), goal: null, status: 'OK', note: '' }],
+  };
+  const incoming = {
+    riders: [{ uid: 'a', bib: '101', name: 'A' }],
+    runs: [{ uid: 'x1', rider: 'a', sec: '1', start: null, goal: T(10, 5, 0), status: 'OK', note: '' }],
+  };
+  const r = C.mergeSectionData(st, incoming);
+  assert.equal(r.merged, 1); assert.equal(r.added, 0);
+  assert.equal(r.runs[0].goal, T(10, 5, 0));
+  assert.equal(r.runs[0].start, T(10, 0, 0)); // 既存の値は保持
+});
+
+test('mergeSectionData: 完全に同じ内容はunchanged、start/goalが異なればconflictで既存を変更しない', () => {
+  const st = {
+    riders: [{ uid: 'a', bib: '101', name: 'A太郎' }],
+    runs: [{ uid: 'r1', rider: 'a', sec: '1', start: T(10, 0, 0), goal: T(10, 5, 0), status: 'OK', note: '' }],
+  };
+  const same = { riders: st.riders, runs: [{ uid: 'x1', rider: 'a', sec: '1', start: T(10, 0, 0), goal: T(10, 5, 0), status: 'OK', note: '' }] };
+  const r1 = C.mergeSectionData(st, same);
+  assert.equal(r1.unchanged, 1); assert.equal(r1.merged, 0); assert.equal(r1.conflicts.length, 0);
+
+  const diff = { riders: st.riders, runs: [{ uid: 'x2', rider: 'a', sec: '1', start: T(10, 0, 0), goal: T(10, 5, 30), status: 'OK', note: '' }] };
+  const r2 = C.mergeSectionData(st, diff);
+  assert.equal(r2.conflicts.length, 1);
+  assert.deepEqual(r2.conflicts[0], { bib: '101', name: 'A太郎', sec: '1' });
+  assert.equal(r2.runs[0].goal, T(10, 5, 0)); // 既存の値は上書きされない
+});
+
+test('mergeSectionData: uidが一致しなくてもBIBで救済する。どちらも無ければunmatched', () => {
+  const st = { riders: [{ uid: 'hq-a', bib: '101', name: 'A' }], runs: [] };
+  const incoming = {
+    riders: [{ uid: 'sec-a', bib: '101', name: 'A' }, { uid: 'sec-b', bib: '999', name: 'B' }],
+    runs: [
+      { uid: 'x1', rider: 'sec-a', sec: '1', start: T(10, 0, 0), goal: T(10, 5, 0), status: 'OK', note: '' }, // BIB救済
+      { uid: 'x2', rider: 'sec-b', sec: '1', start: T(10, 0, 0), goal: T(10, 5, 0), status: 'OK', note: '' }, // 本部に該当なし
+    ],
+  };
+  const r = C.mergeSectionData(st, incoming, mkUidSeq());
+  assert.equal(r.added, 1);
+  assert.equal(r.runs[0].rider, 'hq-a'); // 本部側のuidに正しく対応付く
+  assert.deepEqual(r.unmatched, [{ bib: '999', name: 'B', sec: '1' }]);
+});

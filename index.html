@@ -166,6 +166,15 @@
     </div>
   </div>
   <div class="card">
+    <h2>セクション記録の取り込み（複数端末での計測）</h2>
+    <p class="hint">各走行セクションを別のPC（このツールの別インストール）で計測している場合、そのPCで書き出した「バックアップ（.json）」を読み込んで、タイム記録だけをこの本部のデータに追加・統合できます。ライダー登録やクラス設定は変更されません。<br>
+      手順：①事前に本部でライダー登録まで終えたら、バックアップを書き出して各セクションのPCに配り、そのPCで「バックアップを読み込む」で取り込んでおく（名簿をそろえるため）。②各セクションは「③タイム入力」だけを使って計測する。③大会後、各セクションのPCで書き出したバックアップを、ここで1つずつ取り込む。</p>
+    <div class="btns">
+      <button class="b p" id="btnSectionImport">セクション記録を取り込む（.json）</button>
+      <input type="file" id="sectionFileIn" accept=".json,application/json" hidden>
+    </div>
+  </div>
+  <div class="card">
     <h2>表示設定</h2>
     <label style="max-width:240px">タイムの表示桁数
       <select id="prec"><option value="0">1秒</option><option value="1">1/10秒</option><option value="2">1/100秒</option><option value="3">1/1000秒</option></select></label>

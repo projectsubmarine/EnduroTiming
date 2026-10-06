@@ -236,6 +236,30 @@ test('CSV取り込み：「氏名」列を選ばないと取り込めない', { 
   assert.deepEqual(ui.errors, []);
 });
 
+test('セクション記録の取り込み：BIBで対応付けてrunsをマージする', { skip: !JSDOM && 'jsdom 未インストール（npm install）' }, async () => {
+  const ui = open();
+  ui.rider('101', '太郎', 'IA');
+  const hqUid = ui.state().riders[0].uid;
+
+  // セクション端末側では別のuidで登録されていても、BIBが一致すれば取り込める想定
+  const incoming = {
+    riders: [{ uid: 'section-uid', bib: '101', name: '太郎' }],
+    runs: [{ uid: 'x1', rider: 'section-uid', sec: '1', start: 36000000, goal: 36300000, status: 'OK', note: '' }],
+  };
+  const file = new ui.w.File([JSON.stringify(incoming)], 'section.json', { type: 'application/json' });
+  const input = ui.$('#sectionFileIn');
+  Object.defineProperty(input, 'files', { value: [file], configurable: true });
+  input.dispatchEvent(new ui.w.Event('change'));
+  await new Promise(res => setTimeout(res, 50)); // FileReaderの読み込み完了を待つ
+
+  const S = ui.state();
+  assert.equal(S.runs.length, 1);
+  assert.equal(S.runs[0].rider, hqUid); // 本部側のuidに対応付けられる
+  assert.equal(S.runs[0].goal, 36300000);
+  assert.ok(ui.alerts.at(-1).includes('追加：1件'));
+  assert.deepEqual(ui.errors, []);
+});
+
 test('サンプルデータ投入でエラーが出ない', { skip: !JSDOM && 'jsdom 未インストール（npm install）' }, () => {
   const ui = open();
   ui.$('#btnSample').click();
