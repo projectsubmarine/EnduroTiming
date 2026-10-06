@@ -5,7 +5,7 @@
  * -----
  * 光電センサでライダーの通過を検知し、GPSモジュールから取得した時刻（0時からの経過時間）を
  * 記録する。3台の8桁7セグメントLED表示器に「最新通過時刻」「ひとつ前の通過時刻」「現在時刻」を
- * 表示し続ける。GPSの測位状態はLEDで示す。
+ * 表示し続ける。GPSの測位状態は緑／赤2つのLEDで示す（緑＝受信良好、赤＝問題あり）。
  *
  * ゴールオフィシャルは、表示された時刻とBIBナンバー（目視確認）を、
  * レース計時集計ツール（index.html）の「③タイム入力」に手入力する。
@@ -30,13 +30,14 @@
 // ------------------------------------------------------------------
 // ピン設定（README.md の配線表と対応させること）
 // ------------------------------------------------------------------
-const uint8_t PIN_SENSOR   = 2;  // 光電センサ出力（D2/D3のみ割り込み対応。センサ検知でLOWになる前提＝INPUT_PULLUP）
-const uint8_t PIN_GPS_LED  = 4;  // GPS測位状態LED（+抵抗、GND側へ）
-const uint8_t PIN_GPS_RX   = 5;  // ArduinoのRX ← GPSモジュールのTXへ接続
-const uint8_t PIN_GPS_TX   = 6;  // ArduinoのTX → GPSモジュールのRXへ接続（受信専用なら未配線でも可）
-const uint8_t PIN_DISP_DIN = 7;  // 表示器チェーンのDIN（3台共通・デイジーチェーン）
-const uint8_t PIN_DISP_CLK = 8;  // 表示器チェーンのCLK（3台共通）
-const uint8_t PIN_DISP_CS  = 9;  // 表示器チェーンのCS/LOAD（3台共通）
+const uint8_t PIN_SENSOR     = 2;  // 光電センサ出力（D2/D3のみ割り込み対応。センサ検知でLOWになる前提＝INPUT_PULLUP）
+const uint8_t PIN_GPS_LED_OK = 4;  // GPS受信良好LED（緑。+抵抗、GND側へ）
+const uint8_t PIN_GPS_RX     = 5;  // ArduinoのRX ← GPSモジュールのTXへ接続
+const uint8_t PIN_GPS_TX     = 6;  // ArduinoのTX → GPSモジュールのRXへ接続（受信専用なら未配線でも可）
+const uint8_t PIN_DISP_DIN   = 7;  // 表示器チェーンのDIN（3台共通・デイジーチェーン）
+const uint8_t PIN_DISP_CLK   = 8;  // 表示器チェーンのCLK（3台共通）
+const uint8_t PIN_DISP_CS    = 9;  // 表示器チェーンのCS/LOAD（3台共通）
+const uint8_t PIN_GPS_LED_NG = 10; // GPS受信注意LED（赤。+抵抗、GND側へ）
 
 // LedControlのデバイス番号（Arduinoに近い側から0,1,2。README.mdの配線図参照）
 const uint8_t DISP_LATEST = 0;   // 最新通過時刻
@@ -127,8 +128,10 @@ void showDashes(uint8_t dev) {
 
 void setup() {
   pinMode(PIN_SENSOR, INPUT_PULLUP); // NPNオープンコレクタ（検知時にLOW）のセンサを想定
-  pinMode(PIN_GPS_LED, OUTPUT);
-  digitalWrite(PIN_GPS_LED, LOW);
+  pinMode(PIN_GPS_LED_OK, OUTPUT);
+  pinMode(PIN_GPS_LED_NG, OUTPUT);
+  digitalWrite(PIN_GPS_LED_OK, LOW);
+  digitalWrite(PIN_GPS_LED_NG, LOW);
   attachInterrupt(digitalPinToInterrupt(PIN_SENSOR), onSensorInterrupt, FALLING);
 
   gpsSerial.begin(GPS_BAUD);
@@ -150,15 +153,26 @@ void loop() {
   }
   if (gps.time.isUpdated()) syncFromGps();
 
-  // --- GPS測位状態LED：点滅＝探索中／未同期、点灯＝測位良好 ---
+  // --- GPS測位状態LED：緑＝受信良好、赤＝問題あり ---
+  // 赤は状況によって点滅／点灯を使い分ける：
+  //   ・一度も時刻同期できていない（探索中）→ 点滅
+  //   ・過去に同期済みだが、現在は測位精度が悪い／位置情報が取れない → 点灯
   static unsigned long lastBlinkAt = 0;
   static bool blinkState = false;
   if (gpsFixGood()) {
-    digitalWrite(PIN_GPS_LED, HIGH);
-  } else if (millis() - lastBlinkAt > 400) {
-    lastBlinkAt = millis();
-    blinkState = !blinkState;
-    digitalWrite(PIN_GPS_LED, blinkState ? HIGH : LOW);
+    digitalWrite(PIN_GPS_LED_OK, HIGH);
+    digitalWrite(PIN_GPS_LED_NG, LOW);
+  } else {
+    digitalWrite(PIN_GPS_LED_OK, LOW);
+    if (!timeSynced) {
+      if (millis() - lastBlinkAt > 400) {
+        lastBlinkAt = millis();
+        blinkState = !blinkState;
+        digitalWrite(PIN_GPS_LED_NG, blinkState ? HIGH : LOW);
+      }
+    } else {
+      digitalWrite(PIN_GPS_LED_NG, HIGH);
+    }
   }
 
   // --- センサ検知（デバウンス付き） ---
@@ -173,7 +187,7 @@ void loop() {
       showTime(DISP_LATEST, latestMsOfDay);
       if (hasPrev) showTime(DISP_PREV, prevMsOfDay);
     }
-    // timeSynced==false（GPS同期前）の通過は記録できない。GPS_LEDが点滅中は計測開始前と分かる。
+    // timeSynced==false（GPS同期前）の通過は記録できない。赤LEDが点滅中は計測開始前と分かる。
   }
 
   // --- 現在時刻表示（一定間隔で更新） ---
