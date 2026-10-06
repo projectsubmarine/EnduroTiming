@@ -24,3 +24,7 @@ secrets.*
 
 # Node
 node_modules/
+
+# リポジトリはPUBLIC（GitHub Pagesで公開）。実在の参加者データを誤ってコミットしないよう、
+# ダミーCSV置き場も含めてsamples/は常に非公開（.gitignore）にする。
+samples/
