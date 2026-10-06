@@ -20,6 +20,7 @@ test/           node:test のテスト。core.test.js は依存なし、ui.test.
 docs/manual.md  操作マニュアル（テキスト版・下書き。現場の注意点は今後追記）
 docs/manual.html 操作マニュアル（印刷用・スクリーンショット付き。段階ごとに1ページ、A4縦）
 docs/images/    操作マニュアル用のスクリーンショット（manual.htmlから参照。再撮影の手順は下記）
+firmware/goal_timer/  ゴール計測ハードウェア（Arduino）のファームウェアと配線・部品表（下記「ゴール計測ハードウェア」参照）
 ```
 **公開URL（GitHub Pages）**：https://projectsubmarine.github.io/EnduroTiming/ — リポジトリは PUBLIC。`main` ブランチのルートを配信しており、push すると自動で再公開される（1分程度）。静的ページのまま（データは各ブラウザの localStorage のみ。file:// 版とは保存先が別）。コミットしたものはすべて公開されるので、実在の参加者データ（`samples/` 等）はコミットしない。
 
@@ -89,6 +90,22 @@ S = {
      件数を報告するので、該当は③タイム入力の通常の編集（上書き確認あり）で手動対応する。
    - 実装：マージの判定・適用ロジックは `core.js` の `mergeSectionData()`（DOM非依存・テスト済み）。
      画面側の配線は `app.js`（`#btnSectionImport` / `#sectionFileIn`）。
+
+## ゴール計測ハードウェア（firmware/goal_timer/）
+ゴールラインでの通過時刻記録用に、光電センサ＋GPS時刻＋8桁7セグLED×3台の専用ハードウェア（Arduino）を用意している。
+
+- **このWebアプリとは電気的・ネットワーク的な接続を一切持たない。** 光電センサがライダー通過を検知し、
+  GPSで同期した時刻を3台の表示器（①最新通過時刻／②ひとつ前の通過時刻／③現在時刻）に表示するだけ。
+  ゴールオフィシャルが表示とBIB（目視）を読み取り、③タイム入力に**手入力**する。
+- 表示形式は8桁「`HHMMSSff`」（6桁目の右に小数点灯）＝そのまま `100523.45` のように読める。
+  これは `Core.parseClock()` がそのまま受け付ける形式に合わせて設計している（互換性を崩す変更をする場合は要注意）。
+- ファームウェア本体：`firmware/goal_timer/goal_timer.ino`（Arduino Nano/Uno、TinyGPSPlus・LedControlライブラリ使用）。
+  部品表・配線・調整可能な定数は `firmware/goal_timer/README.md`、配線図は
+  https://claude.ai/artifact/1pY9i7K1Std26eMvG4SihK を参照。
+- ビルド確認には `arduino-cli`（`brew install arduino-cli`）＋AVRコアを使う。このmacは arm64 のため、
+  Arduino付属のavr-gcc（x86_64）を動かすには Rosetta 2 が必要（`softwareupdate --install-rosetta`）。
+- 複数端末での計測（上記）と組み合わせる場合、各セクションのPC（タイム入力係）のそばにこの計測器を置き、
+  表示を見てそのPCの③タイム入力に入れる、という使い方を想定している。
 
 ## 時刻・タイムのルール
 - 入力形式：`10:05`, `10:05:23`, `10:05:23.45`, `100523`, `100523.45`（全角も可）。
