@@ -287,9 +287,78 @@
     return { runs, added, merged, unchanged, conflicts, unmatched };
   }
 
+  /**
+   * オンライン版：入力記録（entries。追記のみで書き換えない）から runs を組み立てる。
+   * entry: { id, rider（riders.uid。不明ならnull）, bib, sec, start?, goal?, status?, note?,
+   *          fix?（訂正：既存の値を上書き）, del?（その(rider,sec)の記録を削除）, by, dev, clientAt }
+   *
+   * - clientAt（端末の時計、epoch ms）の順に適用する。同時刻は id 順。
+   * - ライダーは rider(uid) 優先、見つからなければ bib で riders を探す（後から本部で登録すれば自動で紐づく）。
+   *   どちらにも一致しないものは unmatched に積む。
+   * - start/goal：通常の entry は「空欄なら入れる・同じ値なら何もしない・違う値なら上書きせず conflicts に積む」
+   *   （データを失わないため。オフライン版の mergeSectionData と同じ考え方）。
+   *   fix の entry は、項目があれば（nullでも）上書きし、その項目の競合を解消済みにする。
+   * - status：指定があれば後勝ち。note：空でなければ後勝ち（fix なら空でも上書き）。
+   * - del：その(rider,sec)の記録と競合を消す。
+   *
+   * @param {object[]} entries
+   * @param {object[]} riders 現在の riders
+   * @returns {{runs:object[], conflicts:{rider,sec,field,kept,value,by,dev,clientAt,id}[], unmatched:object[]}}
+   */
+  function runsFromEntries(entries, riders) {
+    const byUid = new Map((riders || []).map(r => [r.uid, r]));
+    const byBib = new Map((riders || []).filter(r => r.bib !== '' && r.bib != null).map(r => [String(r.bib), r]));
+    const sorted = (entries || []).slice().sort((a, b) =>
+      ((a.clientAt || 0) - (b.clientAt || 0)) || String(a.id ?? '').localeCompare(String(b.id ?? '')));
+    const runs = new Map(), conflicts = new Map(), unmatched = [];
+    for (const e of sorted) {
+      const rider = byUid.get(e.rider) || (e.bib != null && e.bib !== '' ? byBib.get(String(e.bib)) : undefined);
+      if (!rider) { unmatched.push(e); continue; }
+      const sec = String(e.sec ?? '');
+      const key = rider.uid + '\u0000' + sec;
+      if (e.del) {
+        runs.delete(key);
+        for (const k of [...conflicts.keys()]) if (k.startsWith(key + '\u0000')) conflicts.delete(k);
+        continue;
+      }
+      let run = runs.get(key);
+      if (!run) {
+        run = { uid: rider.uid + '_' + sec, rider: rider.uid, sec, start: null, goal: null, status: 'OK', note: '' };
+        runs.set(key, run);
+      }
+      for (const f of ['start', 'goal']) {
+        const ck = key + '\u0000' + f;
+        if (e.fix) {
+          if (f in e) { run[f] = e[f] ?? null; conflicts.delete(ck); }
+          continue;
+        }
+        const v = e[f];
+        if (v == null) continue;
+        if (run[f] == null) run[f] = v;
+        else if (run[f] !== v) {
+          if (!conflicts.has(ck)) conflicts.set(ck, []);
+          conflicts.get(ck).push({ rider: rider.uid, sec, field: f, kept: run[f], value: v,
+            by: e.by, dev: e.dev, clientAt: e.clientAt, id: e.id });
+        }
+      }
+      if (e.status) run.status = e.status;
+      if (e.note || (e.fix && 'note' in e)) run.note = e.note || '';
+    }
+    return { runs: [...runs.values()], conflicts: [...conflicts.values()].flat(), unmatched };
+  }
+
+  /** runs（オフライン版のデータ）を、オンライン版の entry（訂正扱い）に変換する。初回の公開時に既存の記録を引き継ぐため */
+  function entriesFromRuns(runs, riders) {
+    const byUid = new Map((riders || []).map(r => [r.uid, r]));
+    return (runs || []).filter(x => byUid.has(x.rider)).map(x => ({
+      rider: x.rider, bib: String(byUid.get(x.rider).bib ?? ''), sec: String(x.sec),
+      start: x.start ?? null, goal: x.goal ?? null, status: x.status || 'OK', note: x.note || '', fix: true,
+    }));
+  }
+
   const Core = {
     DAY_MS, NOCLS, STATUS, nat, z2h, parseClock, fmtClock, fmtClockFull, fmtDur, elapsed, compute, csvCell, toCsv, parseCsv,
-    clsComparator, isValidBib, bibRange, classForBib, nextBibInClass, mergeSectionData,
+    clsComparator, isValidBib, bibRange, classForBib, nextBibInClass, mergeSectionData, runsFromEntries, entriesFromRuns,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = Core;
   else root.Core = Core;

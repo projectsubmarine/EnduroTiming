@@ -35,8 +35,10 @@ function load(){
   catch(e){setStatus('⚠ 保存データを読み込めませんでした');}
 }
 function save(){
+  if(olOn())olDerive(); // オンライン時は記録をサーバーの入力記録から組み立て直す（ライダー登録で不明BIBが解消する等）
   try{localStorage.setItem(KEY,JSON.stringify(S));setStatus('自動保存 '+new Date().toLocaleTimeString('ja-JP'));}
   catch(e){setStatus('⚠ ブラウザに保存できません。バックアップを書き出してください');}
+  if(olOn()){olPushRoster();renderRuns();renderOlBanner();} // 名簿の変更で記録の紐づけ・競合表示が変わることがある
 }
 function setStatus(t){$('#status').textContent=t;}
 
@@ -336,6 +338,7 @@ function tPreview(){
 ['#t_bib','#t_sec','#t_start','#t_goal'].forEach(s=>$(s).addEventListener('input',tPreview));
 $('#tForm').onsubmit=e=>{
   e.preventDefault();
+  if(olWaiting())return;
   const r=riderByBib($('#t_bib').value);
   if(!r){alert('このBIBのライダーは登録されていません。先に「① ライダー登録」で登録してください。');$('#t_bib').focus();return;}
   const sec=z2h($('#t_sec').value);if(!sec){alert('セクション#を入力してください');return;}
@@ -344,6 +347,7 @@ $('#tForm').onsubmit=e=>{
   if(Number.isNaN(gl)){alert('ゴール時刻の形式が正しくありません');$('#t_goal').focus();return;}
   const v={rider:r.uid,sec,start:st,goal:gl,status:$('#t_status').value,note:$('#t_note').value.trim()};
   const dup=S.runs.find(x=>x.rider===r.uid&&x.sec===sec&&x.uid!==editRun);
+  if(olOn()){olSubmitRun(r,v,dup);return;}
   if(editRun){
     if(dup){alert(`BIB ${r.bib} のセクション${sec}の記録が既にあります`);return;}
     Object.assign(S.runs.find(x=>x.uid===editRun),v);
@@ -370,8 +374,10 @@ function editT(u){
   tPreview();$('#t_start').focus();window.scrollTo({top:0,behavior:'smooth'});
 }
 function delT(u){
+  if(olWaiting())return;
   const x=S.runs.find(r=>r.uid===u);const r=riderOf(x.rider);
   if(!confirm(`BIB ${r.bib} ${r.name} のセクション${x.sec}の記録を削除しますか？`))return;
+  if(olOn()){olAdd({rider:x.rider,bib:String(r.bib),sec:x.sec,del:true});if(editRun===u)resetRunForm();return;}
   S.runs=S.runs.filter(r=>r.uid!==u);if(editRun===u)resetRunForm();save();renderRuns();
 }
 function renderRuns(){
@@ -382,7 +388,7 @@ function renderRuns(){
   $('#tCount').textContent=`記録 ${S.runs.length} 件`;
   $('#tTable').innerHTML=`<tr><th>BIB</th><th>氏名</th><th>クラス</th><th class="c">セクション</th><th class="n">スタート</th><th class="n">ゴール</th><th class="n">タイム</th><th class="c">状態</th><th>特記事項</th><th></th></tr>`+
     rows.map(({x,r})=>{const e=elapsed(x);
-      const stTag=x.status!=='OK'?`<span class="tag t-${x.status}">${x.status}</span>`:(e==null?`<span class="tag t-run">計測中</span>`:'完走');
+      const stTag=(x.status!=='OK'?`<span class="tag t-${x.status}">${x.status}</span>`:(e==null?`<span class="tag t-run">計測中</span>`:'完走'))+olConflictTag(x);
       return `<tr><td><b>${esc(r.bib)}</b></td><td>${esc(r.name)}</td><td>${esc(r.cls)}</td><td class="c">${esc(x.sec)}</td>
       <td class="n">${fmtClock(x.start)}</td><td class="n">${fmtClock(x.goal)}</td><td class="n"><b>${fmtDur(e)}</b></td>
       <td class="c">${stTag}</td><td class="note">${esc(x.note)}</td>
@@ -465,6 +471,7 @@ $('#btnJsonOut').onclick=()=>download(fname('backup','json'),JSON.stringify(S,nu
 $('#btnJsonIn').onclick=()=>$('#fileIn').click();
 $('#fileIn').onchange=e=>{
   const f=e.target.files[0];if(!f)return;const rd=new FileReader();
+  if(olOn()){alert(OL_BUSY);e.target.value='';return;}
   rd.onload=()=>{try{
     const d=JSON.parse(rd.result);if(!Array.isArray(d.riders)||!Array.isArray(d.runs))throw 0;
     if(!confirm(`バックアップを読み込みます（ライダー${d.riders.length}名・記録${d.runs.length}件）。\n今のデータは置き換えられます。よろしいですか？`))return;
@@ -482,6 +489,7 @@ $('#sectionFileIn').onchange=e=>{
   rd.onload=()=>{try{
     const d=JSON.parse(rd.result);if(!Array.isArray(d.runs))throw 0;
     if(!confirm(`セクション記録を取り込みます（記録 ${d.runs.length} 件）。よろしいですか？`))return;
+    if(olOn()){olImportSection(d,f.name);return;}
     const r=Core.mergeSectionData(S,d,uid);
     S.runs=r.runs;
     syncStartClassOrder();syncStartOrder();save();renderAll();
@@ -495,11 +503,13 @@ $('#sectionFileIn').onchange=e=>{
 
 /* ---------- その他 ---------- */
 $('#btnClear').onclick=()=>{
+  if(olOn()){alert(OL_BUSY);return;}
   if(!confirm('全データ（ライダー・記録）を消去します。元に戻せません。\n先にバックアップを書き出しましたか？'))return;
   if(!confirm('本当に消去しますか？'))return;
   S=blank();save();renderAll();
 };
 $('#btnSample').onclick=()=>{
+  if(olOn()){alert(OL_BUSY);return;}
   if((S.riders.length||S.runs.length)&&!confirm('今のデータにサンプルを追加します。よろしいですか？'))return;
   const cls=['IA','IB','NA'];const fam=['佐藤','鈴木','高橋','田中','伊藤','渡辺','山本','中村','小林','加藤','吉田','山田'];
   const kn=['サトウ','スズキ','タカハシ','タナカ','イトウ','ワタナベ','ヤマモト','ナカムラ','コバヤシ','カトウ','ヨシダ','ヤマダ'];
@@ -524,8 +534,199 @@ $('#evName').oninput=e=>{S.event.name=e.target.value;save();};
 $('#evDate').onchange=e=>{S.event.date=e.target.value;save();};
 window.addEventListener('storage',e=>{if(e.key===KEY){load();renderAll();}}); // 別タブで更新された場合
 
+/* ---------- オンライン（親システム：Firebase。js/online.js） ---------- */
+// 接続中は、タイム記録（S.runs）をサーバーの入力記録（entries。各ゴール端末・本部が追記する）から組み立てる。
+// ③の登録・編集・削除も entries への追記になる（Core.runsFromEntries）。
+// 名簿（ライダー・クラス等）はこの本部端末が正本で、変更するたびにサーバーへ送る（各ゴール端末はそれを参照する）。
+const OKEY='raceTimer_online';
+const OL_BUSY='オンライン接続中はこの操作はできません。「データ管理 → オンライン」で切断してから行ってください。';
+const OL_WAIT='オンラインの大会に接続できていません。「データ管理 → オンライン」でログインしてから入力してください。\n（このまま入力すると、接続したときに記録が失われるため受け付けません）';
+const OL={eid:'',ready:false,busy:false,error:'',entries:[],conflicts:[],unmatched:[],pending:0,fromCache:true,devices:[],pins:null,unsub:[],lastRoster:''};
+try{OL.eid=JSON.parse(localStorage.getItem(OKEY)||'{}').eid||'';}catch(_){}
+const olOn=()=>!!(OL.eid&&OL.ready);
+// 大会コードは設定済みなのに接続できていない（ログイン切れ等）。この間のタイム入力は受け付けない
+function olWaiting(){if(OL.eid&&!OL.ready&&!Online.unavailableReason()){alert(OL_WAIT);return true;}return false;}
+function olSaveKey(){try{localStorage.setItem(OKEY,JSON.stringify({eid:OL.eid}));}catch(_){}}
+// JSONを経由して undefined を取り除く（Firestoreは undefined を保存できない）
+function olRoster(){const {event,settings,classes,riders,startOrder,startClassOrder}=S;return JSON.parse(JSON.stringify({event,settings,classes,riders,startOrder,startClassOrder}));}
+function olDerive(){
+  const r=Core.runsFromEntries(OL.entries,S.riders);
+  S.runs=r.runs;OL.conflicts=r.conflicts;OL.unmatched=r.unmatched;
+}
+let olTimer=null;
+function olPushRoster(){
+  clearTimeout(olTimer);
+  olTimer=setTimeout(()=>{
+    const ro=olRoster(),j=JSON.stringify(ro);if(j===OL.lastRoster)return;
+    OL.lastRoster=j;Online.pushRoster(OL.eid,ro).catch(olErr);
+  },800);
+}
+function olErr(e){
+  console.error(e);
+  OL.error=e&&e.code==='permission-denied'?'権限がありません。大会コードが正しいか、この大会の本部として登録したGoogleアカウントでログインしているか確認してください。'
+    :String(e&&e.message||e);
+  renderOnline();
+}
+const olAdd=entry=>Online.addEntry(OL.eid,{dev:'本部',...entry}).catch(olErr);
+function olUnsub(){OL.unsub.forEach(f=>{try{f();}catch(_){}});OL.unsub=[];}
+
+// ③の登録（オンライン時）：オフライン版と同じ判断（空欄は既存を残す・違う時刻は確認してから上書き）を entries で表す
+function olSubmitRun(r,v,dup){
+  const base={rider:r.uid,bib:String(r.bib),sec:v.sec};
+  if(editRun){
+    if(dup){alert(`BIB ${r.bib} のセクション${v.sec}の記録が既にあります`);return;}
+    const old=S.runs.find(x=>x.uid===editRun);
+    if(old&&(old.rider!==r.uid||old.sec!==v.sec))olAdd({rider:old.rider,bib:String(riderOf(old.rider)?.bib??''),sec:old.sec,del:true});
+    olAdd({...base,start:v.start,goal:v.goal,status:v.status,note:v.note,fix:true});
+  }else if(dup){
+    const conflict=(v.start!=null&&dup.start!=null&&v.start!==dup.start)||(v.goal!=null&&dup.goal!=null&&v.goal!==dup.goal);
+    if(conflict&&!confirm(`BIB ${r.bib} のセクション${v.sec}には、既に別の時刻が入っています。\n既存：${fmtClock(dup.start)||'—'} → ${fmtClock(dup.goal)||'—'}\n上書きしますか？`))return;
+    const e={...base,status:v.status};
+    if(v.start!=null)e.start=v.start;
+    if(v.goal!=null)e.goal=v.goal;
+    if(v.note)e.note=v.note;
+    if(conflict)e.fix=true;
+    olAdd(e);
+  }else olAdd({...base,start:v.start,goal:v.goal,status:v.status,note:v.note});
+  resetRunForm(v.sec);$('#t_bib').focus();
+}
+// セクション記録（.json）の取り込み（オンライン時）：記録をそのまま entries に追加する。食い違いは「競合」として表示される
+function olImportSection(d,name){
+  const inR=new Map((d.riders||[]).map(r=>[r.uid,r]));const t=Date.now();
+  (d.runs||[]).forEach((x,i)=>olAdd({rider:x.rider,bib:String(inR.get(x.rider)?.bib??''),sec:String(x.sec),start:x.start??null,goal:x.goal??null,
+    status:x.status||'OK',note:x.note||'',dev:('取込 '+name).slice(0,40),clientAt:t+i}));
+  alert(`${(d.runs||[]).length}件の記録をオンラインの大会に追加しました。\n既にある記録と時刻が食い違うものは「競合」として③タイム入力に表示されます。`);
+}
+function olConflictTag(x){
+  if(!olOn())return '';
+  const cs=OL.conflicts.filter(c=>c.rider===x.rider&&c.sec===x.sec);if(!cs.length)return '';
+  const t=cs.map(c=>`${c.field==='start'?'スタート':'ゴール'}：採用 ${fmtClock(c.kept)} ／ 別の入力 ${fmtClock(c.value)}（${c.dev||'不明'}）`).join('\n');
+  return ` <span class="tag t-cf" title="${esc(t)}">⚠ 競合</span>`;
+}
+
+async function olBoot(){
+  renderOnline();
+  Online.registerOffline();
+  if(OL.eid&&!Online.unavailableReason())await olConnect();
+}
+async function olRun(f){
+  OL.busy=true;OL.error='';renderOnline();
+  try{await f();}catch(e){olErr(e);}finally{OL.busy=false;renderOnline();}
+}
+function olLogin(){return olRun(async()=>{await Online.init();if(!Online.isAdminUser())await Online.signInGoogle();if(OL.eid)await olConnect();});}
+function olLogout(){if(!confirm('ログアウトしますか？'))return;olUnsub();OL.ready=false;olRun(()=>Online.signOut());renderRuns();}
+async function olConnect(){
+  await Online.init();
+  if(!Online.isAdminUser()){OL.ready=false;renderOnline();renderRuns();return;}
+  olUnsub();OL.ready=true;OL.lastRoster='';
+  OL.unsub.push(Online.watchEntries(OL.eid,null,(list,meta)=>{
+    OL.entries=list;OL.pending=meta.pending;OL.fromCache=meta.fromCache;
+    save();renderRiders();renderRuns();renderResults();renderOnline();tPreview();
+  },olErr));
+  OL.unsub.push(Online.watchDevices(OL.eid,d=>{OL.devices=d;renderOnline();},olErr));
+  try{OL.pins=await Online.getPins(OL.eid);}catch(_){OL.pins=null;} // 通信できないときは表示しない
+  olPushRoster();renderOnline();renderRuns();
+}
+function olCreate(){
+  if(!confirm(`この端末の大会データ（ライダー${S.riders.length}名・記録${S.runs.length}件）をオンラインに公開します。よろしいですか？`))return;
+  olRun(async()=>{
+    const eid=await Online.createEvent(olRoster());
+    const t=Date.now(); // 既存の記録を引き継ぐ
+    Core.entriesFromRuns(S.runs,S.riders).forEach((e,i)=>Online.addEntry(eid,{dev:'本部（公開前の記録）',...e,clientAt:t+i}).catch(olErr));
+    OL.eid=eid;olSaveKey();await olConnect();
+  });
+}
+function olJoin(){
+  const code=z2h(prompt('大会コード（6文字）を入力してください')||'').trim().toUpperCase();
+  if(!code)return;
+  olRun(async()=>{
+    const ev=await new Promise((ok,ng)=>{const un=Online.watchEvent(code,d=>{un();ok(d);},ng);});
+    if(!ev){alert('その大会コードは見つかりません');return;}
+    if(!confirm(`大会「${ev.roster?.event?.name||code}」に接続します。\nこの端末の今のデータは、サーバーの名簿と記録に置き換わります（必要なら先にバックアップを書き出してください）。よろしいですか？`))return;
+    S=Object.assign(blank(),ev.roster||{},{runs:[]});migrate();
+    OL.eid=code;olSaveKey();await olConnect();renderAll();
+  });
+}
+function olDisconnect(){
+  if(!confirm('オンラインの大会から切断します。\nこの端末には今の名簿と記録が残り、ローカル版として使えます（サーバー上のデータは消えません。大会コードで再接続できます）。よろしいですか？'))return;
+  olUnsub();Object.assign(OL,{eid:'',ready:false,entries:[],conflicts:[],unmatched:[],pins:null,devices:[],error:''});
+  olSaveKey();save();renderAll();renderOnline();
+}
+function olSetPin(sec){
+  olRun(async()=>{const pins={...OL.pins,[sec]:Online.newPin()};await Online.setPins(OL.eid,pins);OL.pins=pins;});
+}
+function olAddSection(){
+  const sec=z2h(prompt('PINを発行するセクション#を入力してください（例：1）')||'').trim();if(!sec)return;
+  if(OL.pins&&OL.pins[sec]){alert(`セクション${sec}のPINは発行済みです`);return;}
+  olSetPin(sec);
+}
+function olReissue(sec){
+  if(!confirm(`セクション${sec}のPINを再発行しますか？\n（登録済みの端末はそのまま使えます。使えなくするには端末一覧の「無効化」を押してください）`))return;
+  olSetPin(sec);
+}
+function olDelSection(sec){
+  if(!confirm(`セクション${sec}のPINを削除しますか？（新しい端末を登録できなくなります）`))return;
+  olRun(async()=>{const pins={...OL.pins};delete pins[sec];await Online.setPins(OL.eid,pins);OL.pins=pins;});
+}
+function olRemoveDevice(id){
+  const d=OL.devices.find(x=>x.id===id);
+  if(!confirm(`端末「${d?.label||id}」を無効化しますか？（その端末からは記録を送れなくなります。送信済みの記録は残ります）`))return;
+  olRun(()=>Online.removeDevice(OL.eid,id));
+}
+function renderOnline(){
+  const el=$('#olArea');if(!el)return;
+  const why=Online.unavailableReason();let h='';
+  if(why==='file')h='<p class="hint">オンライン機能は、Webで公開している版（https://〜）を開いたときだけ使えます。ファイルを直接開いたこの画面では、従来どおりこのPCの中だけで動きます。</p>';
+  else if(why==='config')h='<p class="hint">オンライン機能は未設定です（<code>js/firebase-config.js</code> に接続先を設定すると使えるようになります）。</p>';
+  else if(OL.busy)h='<p class="hint">通信中…</p>';
+  else if(!Online.isAdminUser())h=`<p class="hint">各ゴールの端末（スマホ等）から送られた記録を、この本部に自動で集めて結果を更新します。本部として、Googleアカウントでログインしてください。</p>
+    ${OL.eid?`<p>接続先の大会コード：<span class="ol-code">${esc(OL.eid)}</span>（ログインすると接続します）</p>`:''}
+    <div class="btns"><button class="b p" onclick="olLogin()">Googleでログイン</button></div>`;
+  else if(!OL.eid)h=`<p class="hint">ログイン中：${esc(Online.user().email||'')}</p>
+    <p class="hint">「公開する」と、今のライダー登録・クラス設定・記録をサーバーに送り、大会コードを発行します。別のPCで公開済みの大会を本部として使うときは「大会コードで接続」を選びます。</p>
+    <div class="btns"><button class="b p" onclick="olCreate()">この大会をオンラインに公開する</button>
+    <button class="b" onclick="olJoin()">大会コードで接続する</button><button class="b" onclick="olLogout()">ログアウト</button></div>`;
+  else{
+    const goalUrl=new URL('goal.html?e='+encodeURIComponent(OL.eid),location.href).href;
+    const secs=Object.keys(OL.pins||{}).sort(nat);
+    h=`<p>大会コード：<span class="ol-code">${esc(OL.eid)}</span>　<span class="${OL.fromCache?'ng':'ok'}">${OL.fromCache?'⚠ サーバーに接続できていません（通信が戻ると自動で同期します）':'✓ サーバーと同期中'}</span>
+      ${OL.pending?`　<span class="ng">未送信 ${OL.pending} 件</span>`:''}</p>
+      <p class="hint">ゴール端末用のページ：<a href="${esc(goalUrl)}" target="_blank">${esc(goalUrl)}</a><br>
+      各ゴール端末でこのページを開き、大会コード・セクション#・PINを入力して登録します（登録は通信できる場所で、大会前に済ませてください）。</p>
+      <h3 class="cls-h">セクションとPIN</h3>
+      ${OL.pins==null?'<p class="hint">PINは通信できるときに表示されます。</p>':`<div class="tw"><table><tr><th class="c">セクション</th><th>PIN</th><th class="c">登録端末</th><th></th></tr>
+      ${secs.map(s=>`<tr><td class="c">${esc(s)}</td><td class="ol-code" style="font-size:16px">${esc(OL.pins[s])}</td><td class="c">${OL.devices.filter(d=>d.sec===s).length}</td>
+        <td><button class="b s" onclick="olReissue('${esc(s)}')">再発行</button> <button class="b s d" onclick="olDelSection('${esc(s)}')">削除</button></td></tr>`).join('')}
+      ${secs.length?'':'<tr><td colspan="4" class="muted">PINはまだ発行していません</td></tr>'}</table></div>
+      <div class="btns" style="margin-top:8px"><button class="b" onclick="olAddSection()">セクションのPINを発行</button></div>`}
+      <h3 class="cls-h">登録済みの端末</h3>
+      <div class="tw"><table><tr><th>端末名</th><th class="c">セクション</th><th class="c">記録数</th><th></th></tr>
+      ${OL.devices.slice().sort((a,b)=>nat(a.sec,b.sec)).map(d=>`<tr><td>${esc(d.label||'（名前なし）')}</td><td class="c">${esc(d.sec)}</td>
+        <td class="c">${OL.entries.filter(e=>e.by===d.id).length}</td><td><button class="b s d" onclick="olRemoveDevice('${esc(d.id)}')">無効化</button></td></tr>`).join('')}
+      ${OL.devices.length?'':'<tr><td colspan="4" class="muted">まだありません</td></tr>'}</table></div>
+      <div class="btns" style="margin-top:12px"><button class="b" onclick="olDisconnect()">切断する（ローカル版に戻る）</button><button class="b" onclick="olLogout()">ログアウト</button></div>`;
+  }
+  if(OL.error)h+=`<p class="info"><span class="ng">⚠ ${esc(OL.error)}</span></p>`;
+  el.innerHTML=h;
+  renderOlBanner();
+}
+function renderOlBanner(){
+  const b=$('#olTimesBanner');if(!b)return;
+  if(!OL.eid||Online.unavailableReason()){b.hidden=true;return;}
+  b.hidden=false;
+  if(!OL.ready){b.className='ol-banner warn';b.innerHTML=`⚠ オンラインの大会（<b>${esc(OL.eid)}</b>）に接続していません。「データ管理 → オンライン」でログインしてください。接続するまでタイム入力は受け付けません。`;return;}
+  const un=[...new Set(OL.unmatched.map(e=>e.bib||'?'))].sort(nat);
+  const warn=OL.conflicts.length||un.length||OL.fromCache;
+  b.className='ol-banner'+(warn?' warn':'');
+  b.innerHTML=`オンライン接続中（大会コード <b>${esc(OL.eid)}</b>）。各ゴールからの記録は自動で反映されます。`+
+    (OL.fromCache?'<br>⚠ サーバーに接続できていません。ここでの入力は通信が戻ったときに送信されます。':'')+
+    (OL.pending?`<br>未送信 ${OL.pending} 件`:'')+
+    (OL.conflicts.length?`<br>⚠ 時刻が食い違う記録（競合）が ${new Set(OL.conflicts.map(c=>c.rider+'_'+c.sec)).size} 件あります。一覧の「⚠ 競合」にマウスを乗せると内容が見られます。「編集」で正しい時刻を登録すると解消します。`:'')+
+    (un.length?`<br>⚠ 登録されていないBIBの記録：${un.map(esc).join('、')}（①でそのBIBのライダーを登録すると自動で反映されます）`:'');
+}
+
 function renderAll(){
   $('#evName').value=S.event.name||'';$('#evDate').value=S.event.date||'';$('#prec').value=S.settings.prec;
   renderClasses();renderRiders();renderStartList();renderRuns();renderResults();tPreview();
 }
-load();renderAll();
+load();renderAll();olBoot();

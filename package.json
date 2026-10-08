@@ -4,9 +4,15 @@
   "private": true,
   "description": "MTBエンデューロ用 タイム集計ツール（ブラウザで動くスタンドアロン版）",
   "scripts": {
-    "test": "node --test"
+    "test": "node --test \"test/*.test.js\"",
+    "test:rules": "PATH=/opt/homebrew/opt/openjdk/bin:$PATH firebase emulators:exec --only firestore --project demo-enduro \"node --test test/rules.test.js\"",
+    "test:e2e": "PATH=/opt/homebrew/opt/openjdk/bin:$PATH firebase emulators:exec --only firestore,auth --project demo-enduro \"node test/e2e/online.e2e.js\""
   },
   "devDependencies": {
-    "jsdom": "^26.0.0"
+    "@firebase/rules-unit-testing": "^6.0.0",
+    "firebase": "^13.0.0",
+    "firebase-tools": "^15.33.0",
+    "jsdom": "^26.0.0",
+    "playwright-core": "^1.64.0"
   }
 }

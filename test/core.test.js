@@ -221,3 +221,77 @@ test('mergeSectionData: uidが一致しなくてもBIBで救済する。どち�
   assert.equal(r.runs[0].rider, 'hq-a'); // 本部側のuidに正しく対応付く
   assert.deepEqual(r.unmatched, [{ bib: '999', name: 'B', sec: '1' }]);
 });
+
+/* ---------- オンライン版：entries → runs ---------- */
+const RD = [{ uid: 'a', bib: '101', name: 'A' }, { uid: 'b', bib: '102', name: 'B' }];
+const E = (o, i) => ({ id: 'e' + String(i).padStart(3, '0'), clientAt: 1000 + i, by: 'dev1', dev: 'S1ゴール', ...o });
+
+test('runsFromEntries: スタートとゴールを別端末から入力しても1件にまとまる', () => {
+  const r = C.runsFromEntries([
+    E({ rider: 'a', bib: '101', sec: '1', start: T(10, 0, 0) }, 1),
+    E({ rider: 'a', bib: '101', sec: '1', goal: T(10, 5, 0), by: 'dev2' }, 2),
+  ], RD);
+  assert.deepEqual(r.runs, [{ uid: 'a_1', rider: 'a', sec: '1', start: T(10, 0, 0), goal: T(10, 5, 0), status: 'OK', note: '' }]);
+  assert.deepEqual(r.conflicts, []); assert.deepEqual(r.unmatched, []);
+});
+
+test('runsFromEntries: 違う時刻が後から来ても上書きせず競合として残す', () => {
+  const r = C.runsFromEntries([
+    E({ rider: 'a', sec: '1', goal: T(10, 5, 0) }, 1),
+    E({ rider: 'a', sec: '1', goal: T(10, 5, 0), by: 'dev2' }, 2),   // 同じ値 → 競合ではない
+    E({ rider: 'a', sec: '1', goal: T(10, 6, 0), by: 'dev2' }, 3),
+  ], RD);
+  assert.equal(r.runs[0].goal, T(10, 5, 0));
+  assert.equal(r.conflicts.length, 1);
+  assert.deepEqual([r.conflicts[0].field, r.conflicts[0].kept, r.conflicts[0].value], ['goal', T(10, 5, 0), T(10, 6, 0)]);
+});
+
+test('runsFromEntries: 訂正（fix）は上書きし、競合を解消する。nullで消去もできる', () => {
+  const r = C.runsFromEntries([
+    E({ rider: 'a', sec: '1', start: T(10, 0, 0), goal: T(10, 5, 0) }, 1),
+    E({ rider: 'a', sec: '1', goal: T(10, 6, 0) }, 2),
+    E({ rider: 'a', sec: '1', start: null, goal: T(10, 6, 0), status: 'OK', note: '', fix: true, by: 'hq' }, 3),
+  ], RD);
+  assert.deepEqual([r.runs[0].start, r.runs[0].goal], [null, T(10, 6, 0)]);
+  assert.deepEqual(r.conflicts, []);
+});
+
+test('runsFromEntries: 端末の時計（clientAt）順に適用する（オフラインで遅れて届いた記録も正しい順で）', () => {
+  const r = C.runsFromEntries([
+    E({ rider: 'a', sec: '1', goal: T(10, 7, 0), fix: true, by: 'hq' }, 5),  // 本部の訂正（後）
+    E({ rider: 'a', sec: '1', goal: T(10, 5, 0) }, 1),                        // 先に入力されたが遅れて届いた
+  ], RD);
+  assert.equal(r.runs[0].goal, T(10, 7, 0));
+  assert.deepEqual(r.conflicts, []);
+});
+
+test('runsFromEntries: status は後勝ち、note は空でなければ後勝ち、del で削除', () => {
+  const r = C.runsFromEntries([
+    E({ rider: 'a', sec: '1', start: T(10, 0, 0), note: '転倒' }, 1),
+    E({ rider: 'a', sec: '1', status: 'DNF' }, 2),
+    E({ rider: 'a', sec: '1', note: '' }, 3),
+    E({ rider: 'b', sec: '1', goal: T(10, 5, 0) }, 4),
+    E({ rider: 'b', sec: '1', del: true, by: 'hq' }, 5),
+  ], RD);
+  assert.equal(r.runs.length, 1);
+  assert.deepEqual([r.runs[0].status, r.runs[0].note], ['DNF', '転倒']);
+});
+
+test('runsFromEntries: uidが不明でもBIBで紐づける。どちらも無ければ unmatched', () => {
+  const r = C.runsFromEntries([
+    E({ rider: null, bib: '102', sec: '2', goal: T(11, 0, 0) }, 1),
+    E({ rider: 'zz', bib: '999', sec: '2', goal: T(11, 0, 0) }, 2),
+  ], RD);
+  assert.equal(r.runs[0].rider, 'b');
+  assert.equal(r.unmatched.length, 1); assert.equal(r.unmatched[0].bib, '999');
+});
+
+test('entriesFromRuns → runsFromEntries で元の runs に戻る', () => {
+  const runs = [
+    { uid: 'x', rider: 'a', sec: '1', start: T(10, 0, 0), goal: T(10, 5, 0), status: 'OK', note: 'メモ' },
+    { uid: 'y', rider: 'b', sec: '2', start: null, goal: null, status: 'DNS', note: '' },
+  ];
+  const ents = C.entriesFromRuns(runs, RD).map((e, i) => E(e, i));
+  const back = C.runsFromEntries(ents, RD).runs;
+  assert.deepEqual(back.map(({ uid, ...x }) => x), runs.map(({ uid, ...x }) => x));
+});

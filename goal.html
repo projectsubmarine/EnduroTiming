@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ゴール入力</title>
+<link rel="stylesheet" href="css/style.css">
+<style>
+  body{font-size:16px}
+  main{max-width:640px;margin:0 auto}
+  .g-head{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:baseline}
+  .g-head h1{font-size:18px;margin:0}
+  .sync{font-size:13px;font-weight:bold}
+  .sync.ok{color:var(--ok)}.sync.ng{color:var(--warn)}
+  .mode{display:flex;gap:6px;margin-bottom:12px}
+  .mode button{flex:1;padding:10px;font-size:16px}
+  .mode button.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:bold}
+  .big input{font-size:24px;padding:10px;font-family:ui-monospace,Menlo,monospace}
+  .big label{font-size:13px}
+  .g-grid{display:grid;grid-template-columns:1fr 1.6fr;gap:10px}
+  .g-who{min-height:1.6em;margin:8px 0;font-size:15px}
+  .g-btns{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+  .g-btns .p{flex:1 1 100%;padding:14px;font-size:18px}
+  .g-list td{font-size:14px}
+  .pend{color:var(--warn);font-weight:bold}
+  #setup label{margin-bottom:10px}
+  #setup input{font-size:18px}
+</style>
+</head>
+<body>
+<main>
+
+<!-- 端末の登録（大会前・通信できる場所で） -->
+<section id="setup" hidden>
+  <div class="card">
+    <h2>ゴール端末の登録</h2>
+    <p class="hint">本部から聞いた「大会コード」「セクション#」「PIN」を入力してください。登録は通信できる場所で、大会前に済ませてください（登録後は通信が途切れても入力できます）。</p>
+    <form id="setupForm" autocomplete="off">
+      <label>大会コード<input id="s_eid" required autocapitalize="characters"></label>
+      <label>セクション#<input id="s_sec" required inputmode="numeric"></label>
+      <label>PIN（6桁）<input id="s_pin" required inputmode="numeric"></label>
+      <label>端末名（例：S2ゴール 佐藤）<input id="s_label" required maxlength="40"></label>
+      <div class="btns"><button class="b p" type="submit" id="s_submit">登録する</button>
+        <button class="b" type="button" id="s_cancel" hidden>やめる</button></div>
+      <div class="info" id="s_info"></div>
+    </form>
+  </div>
+</section>
+
+<!-- 入力 -->
+<section id="main" hidden>
+  <div class="card">
+    <div class="g-head">
+      <h1 id="g_title"></h1>
+      <span class="sync" id="g_sync"></span>
+    </div>
+    <div class="hint" id="g_sub"></div>
+  </div>
+  <div class="card">
+    <div class="mode">
+      <button class="b" type="button" data-mode="goal">ゴール</button>
+      <button class="b" type="button" data-mode="start">スタート</button>
+    </div>
+    <form id="gForm" autocomplete="off" class="big">
+      <div class="g-grid">
+        <label>BIB<input id="g_bib" inputmode="numeric" required></label>
+        <label><span id="g_tlabel">ゴール時刻</span><input id="g_time" inputmode="decimal" placeholder="100523.45"></label>
+      </div>
+      <div class="g-who info" id="g_who"></div>
+      <label>メモ（任意）<input id="g_note" maxlength="200" style="font-size:16px;font-family:inherit"></label>
+      <div class="g-btns">
+        <button class="b p" type="submit">登録</button>
+        <button class="b" type="button" id="g_now">今の時刻を入れる</button>
+        <button class="b d" type="button" data-status="DNF">DNF</button>
+        <button class="b d" type="button" data-status="DNS">DNS</button>
+        <button class="b d" type="button" data-status="DSQ">DSQ</button>
+      </div>
+      <p class="hint">時刻は計測器の表示（例 <b>100523.45</b>）をそのまま入力できます。「今の時刻を入れる」はこの端末の時計を使います（計測器より精度が落ちます）。</p>
+    </form>
+  </div>
+  <div class="card">
+    <div class="btns" style="margin-bottom:8px"><strong id="g_count"></strong></div>
+    <div class="info" id="g_warn"></div>
+    <div class="tw"><table class="g-list" id="g_list"></table></div>
+  </div>
+  <div class="card">
+    <h2>その他</h2>
+    <p class="hint">通信がまったく使えなかったときは、記録をファイルに書き出して本部に渡してください（本部の「データ管理 → セクション記録を取り込む」で読み込めます）。</p>
+    <div class="btns">
+      <button class="b" type="button" id="g_export">記録をファイルに書き出す（.json）</button>
+      <button class="b" type="button" id="g_reset">端末の登録をやり直す</button>
+    </div>
+  </div>
+</section>
+
+<section id="na" hidden><div class="card" id="na_msg"></div></section>
+</main>
+<script src="js/core.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/online.js"></script>
+<script src="js/goal.js"></script>
+</body>
+</html>

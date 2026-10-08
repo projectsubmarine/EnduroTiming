@@ -27,7 +27,7 @@ firmware/goal_timer/  ゴール計測ハードウェア（Arduino）のファー
 新しい計算・変換処理（CSV取り込みなど）は **core.js に置いてテストを書く**。app.js はDOMとのつなぎだけにする。
 
 ## コマンド
-- テスト：`npm install`（初回のみ）→ `npm test`
+- テスト：`npm install`（初回のみ）→ `npm test`（オンライン版は `npm run test:rules` / `npm run test:e2e` も。下記「オンライン版」）
 - 動作確認：`index.html` をブラウザで開く。「データ管理 → サンプルデータを入れる」で12名分のデータが入る。
 
 ## データモデル（localStorage キー `raceTimer_v1`、バックアップJSONも同じ形）
@@ -91,6 +91,25 @@ S = {
    - 実装：マージの判定・適用ロジックは `core.js` の `mergeSectionData()`（DOM非依存・テスト済み）。
      画面側の配線は `app.js`（`#btnSectionImport` / `#sectionFileIn`）。
 
+## オンライン版（`online` ブランチ。親システム＝Firebase）
+各ゴールの端末（`goal.html` / `js/goal.js`）から記録を送り、本部（`index.html`）の結果をリアルタイムに更新する拡張。
+設定・運用手順は `docs/online.md`。**このブランチでも file:// のローカル版としての動作は壊さない**（オンライン機能は https で開き、
+`js/firebase-config.js` が設定されているときだけ有効。SDKは `vendor/firebase/`（compat版・UMD）を必要時に読み込む）。
+- 決定済みの方針：Firebase（Firestore＋Auth＋Hosting）／通信は途切れる前提（オフライン保存＋自動送信）／
+  ゴール端末はセクション別6桁PIN＋匿名ログイン、本部はGoogleログイン／結果はスタッフのみ（一般公開しない）。
+- Firestore：`events/{eid}`（`admins`, `roster`＝runs以外のS）、`private/pins`、`devices/{uid}`、`entries/{id}`（**追記のみ**）。
+  権限は `firestore.rules`。Firebaseとのやり取りは `js/online.js`（window.Online）に集約。
+- runs は entries から `Core.runsFromEntries()` で組み立てる（clientAt順に適用。空欄は埋める・違う値は上書きせず conflicts、
+  `fix` は上書き、`del` は削除、uid→BIBの順でライダーに紐づけ、不明は unmatched）。オフライン版の runs は
+  `Core.entriesFromRuns()` で公開時に引き継ぐ。どちらも `test/core.test.js` でテスト。
+- 本部側の配線は `app.js` の「オンライン」節（`OL`, `olOn()`, `olSubmitRun()` 等）。接続中は③の登録・削除が entries への追記になり、
+  `save()` で runs を組み立て直して名簿をサーバーへ送る。大会コード設定済みで未接続の間は③の入力を拒否する（再接続時に消えるため）。
+- 電波が無くてもページを開けるよう `sw.js`（サービスワーカー）で画面のファイルを保存する。画面のファイルを増やしたら
+  `sw.js` の `FILES` に足して `VERSION` を上げる。
+- テスト：`npm test`（`test/online.test.js` は偽の Online を注入した jsdom テスト）、`npm run test:rules`（ルール。エミュレータ）、
+  `npm run test:e2e`（実Chrome＋実SDK＋エミュレータで通し。電波なし→再読み込み→復帰も確認）。後の2つは Java（`brew install openjdk`、
+  導入済み）が必要。オンライン部分を変えたら3つとも通す。
+
 ## ゴール計測ハードウェア（firmware/goal_timer/）
 ゴールラインでの通過時刻記録用に、光電センサ＋GPS時刻＋8桁7セグLED×3台の専用ハードウェア（Arduino）を用意している。
 
@@ -127,7 +146,7 @@ S = {
 - ペナルティ秒の加算、セクションごとの順位表示
 - 手書きメモからの入力をさらに速くする（BIB → 時刻を連続で入力するモード）
 - RFID等によるユニークID計測の簡略化：`riders[].tag` フィールドを拡張用に用意済み（現状は手入力・重複チェックのみ）。実際にリーダー等と連携する場合は、`tag` からBIBを引いて②タイム入力の自動入力などにつなげる想定
-- 複数端末で使いたくなったら：ローカルサーバー（Node または Python ＋ SQLite）版を検討。その場合も core.js はそのまま使えるように保つ
+- 複数端末で使いたくなったら：ローカルサーバー（Node または Python ＋ SQLite）版を検討。その場合も core.js はそのまま使えるように保つ（`online` ブランチでFirebase版を開発中。上記「オンライン版」参照）
 - 操作マニュアル（`docs/manual.md` / `docs/manual.html`）の現場での注意点（TODO）を大会運用に合わせて充実させる
 
 ## 操作マニュアルのスクリーンショットを撮り直す

@@ -61,3 +61,10 @@ tr.r1 td{background:var(--g1)}tr.r2 td{background:var(--g2)}tr.r3 td{background:
   body[data-print="res"] #tab-res{display:block!important}
   body[data-print="start"] #tab-start{display:block!important}
 }
+
+/* オンライン版 */
+.ol-banner{border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin-bottom:14px;background:var(--accent-soft);font-size:13px}
+.ol-banner.warn{background:#fff3f2;border-color:#f3c3be}
+.ol-code{font-family:ui-monospace,Menlo,monospace;font-size:20px;font-weight:bold;letter-spacing:.12em}
+.t-cf{background:#fde8e6;color:var(--warn)}
+@media print{.ol-banner{display:none}}

@@ -1,0 +1,57 @@
+rules_version = '2';
+// オンライン版（親システム）のアクセス権。構成は js/online.js の先頭コメントを参照。
+// ・本部（大会の admins に含まれるGoogleアカウント）：すべて読み書きできる
+// ・ゴール端末（匿名ログイン）：PINが正しいときだけ devices に自分を登録でき、
+//   登録後は名簿の閲覧と、自分のセクションの記録の閲覧・追加だけができる
+// ・記録（entries）は追記のみ。書き換え・削除はできない（訂正・削除も新しい記録として追加する）
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function isGoogle() { return signedIn() && request.auth.token.firebase.sign_in_provider != 'anonymous'; }
+    function evPath(eid) { return /databases/$(database)/documents/events/$(eid); }
+    function isAdmin(eid) { return signedIn() && exists(evPath(eid)) && request.auth.uid in get(evPath(eid)).data.admins; }
+    function devPath(eid) { return /databases/$(database)/documents/events/$(eid)/devices/$(request.auth.uid); }
+    function isDevice(eid) { return signedIn() && exists(devPath(eid)); }
+    function devSec(eid) { return get(devPath(eid)).data.sec; }
+    function pinOk(eid, sec, pin) {
+      let pins = get(/databases/$(database)/documents/events/$(eid)/private/pins).data.pins;
+      return sec in pins && pins[sec] == pin;
+    }
+    function timeOk(v) { return v == null || (v is int && v >= 0 && v < 86400000); }
+
+    match /events/{eid} {
+      allow read: if isAdmin(eid) || isDevice(eid);
+      allow create: if isGoogle() && request.resource.data.admins == [request.auth.uid];
+      allow update: if isAdmin(eid) && request.auth.uid in request.resource.data.admins;
+      allow delete: if false;
+
+      match /private/{doc} {
+        allow read, write: if isAdmin(eid);
+      }
+
+      match /devices/{devUid} {
+        allow read: if isAdmin(eid) || devUid == request.auth.uid;
+        allow create, update: if signedIn() && devUid == request.auth.uid
+          && request.resource.data.keys().hasOnly(['sec', 'pin', 'label', 'createdAt'])
+          && request.resource.data.sec is string && request.resource.data.pin is string
+          && request.resource.data.label is string && request.resource.data.label.size() <= 40
+          && pinOk(eid, request.resource.data.sec, request.resource.data.pin);
+        allow delete: if isAdmin(eid) || devUid == request.auth.uid;
+      }
+
+      match /entries/{id} {
+        allow read: if isAdmin(eid) || (isDevice(eid) && resource.data.sec == devSec(eid));
+        allow create: if signedIn()
+          && request.resource.data.keys().hasOnly(['rider', 'bib', 'sec', 'start', 'goal', 'status', 'note', 'fix', 'del', 'by', 'dev', 'clientAt', 'at'])
+          && request.resource.data.by == request.auth.uid
+          && request.resource.data.sec is string && request.resource.data.sec.size() <= 10
+          && request.resource.data.clientAt is int
+          && timeOk(request.resource.data.get('start', null)) && timeOk(request.resource.data.get('goal', null))
+          && request.resource.data.get('status', 'OK') in ['OK', 'DNF', 'DNS', 'DSQ']
+          && request.resource.data.get('note', '').size() <= 200
+          && (isAdmin(eid) || (isDevice(eid) && request.resource.data.sec == devSec(eid)));
+        allow update, delete: if false;
+      }
+    }
+  }
+}
