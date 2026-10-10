@@ -15,17 +15,21 @@ const fmtClockFull=Core.fmtClockFull;
 const compute=()=>Core.compute(S);
 
 let S=blank();
-function blank(){return {version:2,event:{name:'',date:''},settings:{prec:2},classes:[],riders:[],startOrder:[],startClassOrder:[],runs:[]};}
+function blank(){return {version:2,event:{name:'',date:''},settings:{prec:2},classes:[],riders:[],startOrder:[],startClassOrder:[],startPlan:{sec:'1',classes:{}},runs:[]};}
 
 /* ---------- 保存 ---------- */
 // 旧バックアップを補う：
 // ・v1以前：classes/startOrderが無い → 補完
+// ・startPlan（スタート時刻の自動入力の設定）が無い → 空の設定を補完（versionは2のまま。項目の追加のみ）
 // ・v1：classesが文字列配列 → {name,digit}形式へ変換（digitは未設定=null）
 function migrate(){
   if(!Array.isArray(S.classes))S.classes=[];
   S.classes=S.classes.map(c=>typeof c==='string'?{name:c,digit:null}:{name:c.name,digit:c.digit??null});
   if(!Array.isArray(S.startOrder))S.startOrder=[];
   if(!Array.isArray(S.startClassOrder))S.startClassOrder=[];
+  if(!S.startPlan||typeof S.startPlan!=='object')S.startPlan={sec:'1',classes:{}};
+  if(!S.startPlan.classes||typeof S.startPlan.classes!=='object')S.startPlan.classes={};
+  if(!S.startPlan.sec)S.startPlan.sec='1';
   if(!S.classes.length&&S.riders.length)S.classes=[...new Set(S.riders.map(r=>r.cls).filter(Boolean))].sort(nat).map(name=>({name,digit:null}));
   S.version=2;
   syncStartClassOrder();syncStartOrder();
@@ -92,6 +96,7 @@ function renameCls(i){
   const old=cur.name;cur.name=v;
   S.riders.forEach(r=>{if(r.cls===old)r.cls=v;});
   S.startClassOrder=S.startClassOrder.map(n=>n===old?v:n);
+  if(S.startPlan.classes[old]){S.startPlan.classes[v]=S.startPlan.classes[old];delete S.startPlan.classes[old];}
   save();renderClasses();renderRiders();renderStartList();
 }
 function setClsDigit(i){
@@ -270,6 +275,7 @@ function syncStartClassOrder(){
   const known=new Set(S.startClassOrder);
   const missing=[...names].filter(n=>!known.has(n)).sort(Core.clsComparator(S.classes));
   S.startClassOrder.push(...missing);
+  Object.keys(S.startPlan.classes).forEach(n=>{if(!names.has(n))delete S.startPlan.classes[n];});
 }
 function syncStartOrder(){
   const ids=new Set(S.riders.map(r=>r.uid));
@@ -299,24 +305,57 @@ $('#btnStartPrint').onclick=()=>{renderStartList();printTab('start');};
 // 並び替え（▲▼・初期化）はsave()済みの前提で呼ぶ。登録・削除側は先にsyncStartOrder()してから保存する。
 function renderStartClassOrder(){
   const list=S.startClassOrder;
-  $('#startClsTable').innerHTML=`<tr><th class="c">出走順</th><th>クラス</th><th class="c">人数</th><th class="noprint"></th></tr>`+
-    list.map((name,i)=>`<tr><td class="c">${i+1}</td><td>${esc(name)}</td><td class="c">${S.riders.filter(r=>(r.cls||NOCLS)===name).length}</td>
+  $('#startClsTable').innerHTML=`<tr><th class="c">出走順</th><th>クラス</th><th class="c">人数</th><th>1番走者の出走時刻</th><th>スタート間隔</th><th class="noprint"></th></tr>`+
+    list.map((name,i)=>{const p=S.startPlan.classes[name]||{};return `<tr><td class="c">${i+1}</td><td>${esc(name)}</td><td class="c">${S.riders.filter(r=>(r.cls||NOCLS)===name).length}</td>
+      <td><input class="sp" data-i="${i}" data-k="first" value="${esc(fmtClockFull(p.first))}" placeholder="10:00:00" onchange="setStartPlan(this)"></td>
+      <td><input class="sp" data-i="${i}" data-k="interval" value="${esc(Core.fmtInterval(p.interval))}" placeholder="30（秒）" onchange="setStartPlan(this)"></td>
       <td class="noprint"><button class="b s" ${i===0?'disabled':''} onclick="moveStartClass(${i},-1)">▲</button>
-      <button class="b s" ${i===list.length-1?'disabled':''} onclick="moveStartClass(${i},1)">▼</button></td></tr>`).join('')+
-    (list.length?'':`<tr><td colspan="4" class="muted">クラスが登録されていません</td></tr>`);
+      <button class="b s" ${i===list.length-1?'disabled':''} onclick="moveStartClass(${i},1)">▼</button></td></tr>`;}).join('')+
+    (list.length?'':`<tr><td colspan="6" class="muted">クラスが登録されていません</td></tr>`);
+  $('#sp_sec').value=S.startPlan.sec;
 }
+// スタート時刻の自動入力：クラスごとの「1番走者の出走時刻」「スタート間隔」を S.startPlan に保存し、
+// ボタンを押したときに、指定セクションの runs のスタート時刻へ反映する（計算は core.js）。
+function setStartPlan(el){
+  const name=S.startClassOrder[+el.dataset.i],k=el.dataset.k;
+  const v=k==='first'?parseClock(el.value):Core.parseInterval(el.value);
+  el.classList.toggle('bad',Number.isNaN(v));
+  if(Number.isNaN(v))return; // 不正な入力は保存しない（赤枠で知らせる）
+  const p=S.startPlan.classes[name]||(S.startPlan.classes[name]={first:null,interval:null});
+  p[k]=v;
+  if(p.first==null&&p.interval==null)delete S.startPlan.classes[name];
+  el.value=k==='first'?fmtClockFull(v):Core.fmtInterval(v);
+  save();
+}
+$('#sp_sec').onchange=()=>{const v=z2h($('#sp_sec').value);if(!v){$('#sp_sec').value=S.startPlan.sec;return;}S.startPlan.sec=v;save();renderStartList();};
+$('#btnStartPlan').onclick=()=>{
+  if(document.querySelector('#startClsTable input.bad')){alert('出走時刻またはスタート間隔の形式が正しくありません（赤枠の欄）。修正してからもう一度押してください。');return;}
+  const sec=S.startPlan.sec;
+  const half=S.startClassOrder.filter(n=>{const p=S.startPlan.classes[n];return p&&(p.first==null)!==(p.interval==null);});
+  if(half.length){alert(`クラス「${half.join('」「')}」は、出走時刻とスタート間隔の片方しか入力されていません。両方入力するか、両方空欄にしてください。`);return;}
+  const list=Core.planStartTimes(S);
+  if(!list.length){alert('スタート時刻を入れる対象がありません。クラスごとに「1番走者の出走時刻」と「スタート間隔」を入力してください。');return;}
+  const res=Core.applyStartTimes(S.runs,list,sec,uid);
+  if(res.overwritten&&!confirm(`セクション${sec}には、既に別のスタート時刻が入っている記録が${res.overwritten}件あります。\n今回の設定で上書きしますか？（ゴール時刻・状態は変わりません）`))return;
+  S.runs=res.runs;save();renderStartList();renderRuns();
+  alert(`セクション${sec}のスタート時刻を${list.length}名分入力しました。`+
+    (res.overwritten?`\n（うち${res.overwritten}件は既存のスタート時刻を上書き）`:'')+
+    `\n「③ タイム入力」の一覧で確認・修正できます。`);
+};
 function renderStartList(){
   renderStartClassOrder();
   const list=S.startOrder.map(riderOf).filter(Boolean);
+  const sec=S.startPlan.sec;
+  const stOf=new Map(S.runs.filter(x=>x.sec===sec).map(x=>[x.rider,x.start]));
   $('#sCount').textContent=`出走予定 ${list.length} 名`;
   $('#sTitle').textContent=(S.event.name||'レース')+' スタートリスト';
   $('#sSub').textContent=[S.event.date,'出力 '+new Date().toLocaleString('ja-JP')].filter(Boolean).join('　');
-  $('#sTable').innerHTML=`<tr><th class="c">出走順</th><th>BIB</th><th>氏名</th><th>読み仮名</th><th>クラス</th><th>ICタグ</th><th>特記事項</th><th class="noprint"></th></tr>`+
-    list.map((r,i)=>`<tr><td class="c"><b>${i+1}</b></td><td><b>${esc(r.bib)}</b></td><td>${esc(r.name)}</td><td>${esc(r.kana)}</td><td>${esc(r.cls)}</td><td>${esc(r.tag)}</td>
+  $('#sTable').innerHTML=`<tr><th class="c">出走順</th><th class="c">スタート時刻（S${esc(sec)}）</th><th>BIB</th><th>氏名</th><th>読み仮名</th><th>クラス</th><th>ICタグ</th><th>特記事項</th><th class="noprint"></th></tr>`+
+    list.map((r,i)=>`<tr><td class="c"><b>${i+1}</b></td><td class="c">${fmtClock(stOf.get(r.uid))}</td><td><b>${esc(r.bib)}</b></td><td>${esc(r.name)}</td><td>${esc(r.kana)}</td><td>${esc(r.cls)}</td><td>${esc(r.tag)}</td>
       <td class="note">${esc(r.note)}</td><td class="noprint">
       <button class="b s" ${i===0?'disabled':''} onclick="moveStart('${r.uid}',-1)">▲</button>
       <button class="b s" ${i===list.length-1?'disabled':''} onclick="moveStart('${r.uid}',1)">▼</button></td></tr>`).join('')+
-    (list.length?'':`<tr><td colspan="8" class="muted">ライダーが登録されていません</td></tr>`);
+    (list.length?'':`<tr><td colspan="9" class="muted">ライダーが登録されていません</td></tr>`);
 }
 
 /* ---------- ③ タイム ---------- */

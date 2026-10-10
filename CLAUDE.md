@@ -12,7 +12,7 @@
 
 ## 構成
 ```
-index.html      画面の骨組み（タブ: ①ライダー登録 ②スタートリスト ③タイム入力 ④結果・順位 / データ管理）
+index.html      画面の骨組み（タブ: ①ライダー登録 ②スタートリスト（出走順・スタート時刻の自動入力） ③タイム入力 ④結果・順位 / データ管理）
 css/style.css   スタイル（印刷用 @media print を含む。A4横）
 js/core.js      計算ロジック（DOMに依存しない純粋関数）。ブラウザでは window.Core、Nodeでは require
 js/app.js       画面処理。状態は変数 S に集約 → 変更したら save() → render*()
@@ -40,6 +40,7 @@ S = {
   riders:    [{ uid, bib, name, kana, cls, tag, note }],
   startOrder:      [uid, uid, ...],           // ②スタートリストの出走順（riders.uidの配列）
   startClassOrder: [clsName, ...],            // ②スタートリストのクラスの出走順（クラス名の配列。未設定はCore.NOCLS）
+  startPlan: { sec, classes: { [clsName]: { first, interval } } },  // ②スタート時刻の自動入力の設定（下記）
   runs:      [{ uid, rider /*riders.uid*/, sec, start, goal, status, note }],
 }
 ```
@@ -60,6 +61,14 @@ S = {
 - `startClassOrder` は①の「参加クラス設定」の表示順（結果表用）とは**独立**した、スタートリスト専用のクラスの出走順。②スタートリスト画面の「クラスの出走順」で▲▼のみで設定・変更する（個々のライダーを並べ替える必要はない）。▲▼で入れ替えると、その場で `startOrder` が「クラスの出走順→BIBの自然順」に再生成される。
   - `classes` に登録されているクラス（まだ誰も登録していなくても）＋ クラス未設定のライダーがいる場合は `Core.NOCLS` を含む。クラスの追加／削除／リネームに追従する（リネームは名称をそのまま引き継ぐ）。
   - 空／未定義の旧バックアップは読み込み時に `classes` の並び順から自動生成される。
+- `startPlan` は②スタートリストの「スタート時刻の自動入力」の設定。`sec`＝入力先のセクション#（文字列。既定 `'1'`）、
+  `classes[クラス名]`＝`{ first: 1番走者の出走時刻（0時からのms）, interval: スタート間隔（ms） }`（`null`＝未入力。両方未入力のクラスはキーごと持たない。クラス未設定は `Core.NOCLS` がキー）。
+  - 「スタート時刻を自動入力」ボタンを押したときだけ、`startOrder` の順に各クラス内で `first + i*interval` を計算し、`runs` の該当セクションの `start` に書き込む
+    （記録が無ければ `goal:null, status:'OK'` で新規追加。既にあればスタート時刻だけ書き換え、ゴール・状態・特記事項は残す。別の時刻が入っている記録があれば上書き確認）。
+    **自動では再計算しない**（出走順や設定を変えたら、もう一度ボタンを押す）。片方だけ入力されたクラスがあると実行を拒否する。
+  - スタート間隔の入力は秒（`30`）または 分:秒（`1:00`）。②の一覧の「スタート時刻」列は `startPlan.sec` のセクションの `runs[].start` を表示している（予定時刻を別に持ってはいない）。
+  - クラスのリネーム・削除に追従する。`startPlan` の無い旧バックアップは `migrate()` が空の設定を補う（項目の追加のみなので `version` は2のまま）。
+  - 計算は `core.js` の `parseInterval()` / `fmtInterval()` / `planStartTimes()` / `applyStartTimes()`（DOM非依存・テスト済み）。画面側は `app.js`（`setStartPlan` / `#btnStartPlan` / `#sp_sec`）。
 
 ## CSV取り込み（エントリーリスト）
 - ①ライダー登録タブの「CSVから取り込む」で、氏名・読み仮名などが入ったCSVファイル（任意のレイアウト）からライダーを一括登録できる。

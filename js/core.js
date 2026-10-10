@@ -287,9 +287,83 @@
     return { runs, added, merged, unchanged, conflicts, unmatched };
   }
 
+  /**
+   * スタート間隔の文字列 → ミリ秒
+   * 受け付ける形式: "30"（秒）, "30.5", "1:30"（分:秒）, "1:30.5"（全角可）
+   * @returns {number|null} null=空欄, NaN=不正
+   */
+  function parseInterval(s) {
+    s = z2h(s);
+    if (!s) return null;
+    const m = s.match(/^(?:(\d{1,3}):)?(\d{1,4})(?:[.,](\d{1,3}))?$/);
+    if (!m) return NaN;
+    const mi = +(m[1] || 0), se = +m[2], f = +((m[3] || '') + '000').slice(0, 3);
+    if (m[1] != null && se > 59) return NaN;
+    return (mi * 60 + se) * 1000 + f;
+  }
+
+  /** スタート間隔の表示（入力欄用）。60秒未満は秒 "30" / "30.5"、それ以上は "1:30" */
+  function fmtInterval(ms) {
+    if (ms == null) return '';
+    const frac = ms % 1000 ? '.' + String(ms % 1000).padStart(3, '0').replace(/0+$/, '') : '';
+    const se = Math.floor(ms / 1000);
+    return se < 60 ? se + frac : `${Math.floor(se / 60)}:${String(se % 60).padStart(2, '0')}${frac}`;
+  }
+
+  /**
+   * クラスごとの「1番走者の出走時刻」「スタート間隔」から、各走者のスタート時刻を求める。
+   * 各クラスの中の順番は startOrder（出走順）に従う。出走時刻・間隔のどちらかが未設定のクラスは対象外。
+   * 24時を超えた場合は翌日の時刻（0時からのms）に折り返す。
+   * @param {object} state { riders, startOrder, startPlan:{ classes:{ [クラス名]:{first, interval} } } }
+   * @returns {{rider:string, start:number}[]} 出走順に並んだ（riders.uid, スタート時刻ms）の配列
+   */
+  function planStartTimes(state) {
+    const plan = (state.startPlan && state.startPlan.classes) || {};
+    const byUid = new Map((state.riders || []).map(r => [r.uid, r]));
+    const count = new Map(), out = [];
+    for (const u of (state.startOrder || [])) {
+      const r = byUid.get(u);
+      if (!r) continue;
+      const cls = r.cls || NOCLS, p = plan[cls];
+      if (!p || p.first == null || p.interval == null) continue;
+      const i = count.get(cls) || 0;
+      count.set(cls, i + 1);
+      out.push({ rider: u, start: (p.first + i * p.interval) % DAY_MS });
+    }
+    return out;
+  }
+
+  /**
+   * planStartTimes() の結果を、指定セクションの runs のスタート時刻に反映する（state は変更せず、新しい runs を返す）。
+   * 記録が無ければ新規追加（ゴール未入力・状態OK）、あればスタート時刻だけを書き換える（ゴール・状態・特記事項は残す）。
+   * @param {object[]} runs 現在の runs
+   * @param {{rider:string, start:number}[]} list planStartTimes() の結果
+   * @param {string} sec セクション#
+   * @param {() => string} [mkUid] 新規runに使うuid生成関数
+   * @returns {{runs:object[], added:number, filled:number, overwritten:number, unchanged:number}}
+   *   filled=スタート未入力の既存記録に入れた件数、overwritten=別の時刻が入っていた記録を書き換えた件数
+   */
+  function applyStartTimes(runs, list, sec, mkUid) {
+    const genUid = mkUid || (() => Date.now().toString(36) + Math.random().toString(36).slice(2, 7));
+    const out = (runs || []).map(r => ({ ...r }));
+    const byRider = new Map(out.filter(r => r.sec === sec).map(r => [r.rider, r]));
+    let added = 0, filled = 0, overwritten = 0, unchanged = 0;
+    for (const { rider, start } of list) {
+      const ex = byRider.get(rider);
+      if (!ex) {
+        const row = { uid: genUid(), rider, sec, start, goal: null, status: 'OK', note: '' };
+        out.push(row); byRider.set(rider, row); added++;
+      } else if (ex.start == null) { ex.start = start; filled++; }
+      else if (ex.start !== start) { ex.start = start; overwritten++; }
+      else unchanged++;
+    }
+    return { runs: out, added, filled, overwritten, unchanged };
+  }
+
   const Core = {
     DAY_MS, NOCLS, STATUS, nat, z2h, parseClock, fmtClock, fmtClockFull, fmtDur, elapsed, compute, csvCell, toCsv, parseCsv,
     clsComparator, isValidBib, bibRange, classForBib, nextBibInClass, mergeSectionData,
+    parseInterval, fmtInterval, planStartTimes, applyStartTimes,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = Core;
   else root.Core = Core;

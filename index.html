@@ -93,6 +93,15 @@
     <h2 style="margin:0 0 8px;font-size:15px">クラスの出走順</h2>
     <p class="hint" style="margin:0 0 8px">▲▼でクラスの出走順を入れ替えられます。各クラスの中はBIBナンバーの小さい順に出走します。</p>
     <div class="tw"><table id="startClsTable"></table></div>
+    <h2 style="margin:14px 0 8px;font-size:15px">スタート時刻の自動入力</h2>
+    <p class="hint" style="margin:0 0 8px">スタート時刻を事前に決めておく場合は、上の表でクラスごとに「1番走者の出走時刻」と「スタート間隔」を入力し、下のボタンを押します。<br>
+      各クラスの中で、下の一覧の出走順どおりに間隔をあけたスタート時刻が入ります（「③ タイム入力」の記録に入り、あとから個別に修正できます）。<br>
+      スタート間隔は秒（例：30）または 分:秒（例：1:00）で入力します。空欄のクラスには入力しません。</p>
+    <div class="btns">
+      <label style="flex-direction:row;align-items:center;gap:6px">セクション#<input id="sp_sec" value="1" style="width:60px"></label>
+      <button class="b p" type="button" id="btnStartPlan">スタート時刻を自動入力</button>
+      <span class="hint">出走順を入れ替えたあとは、もう一度このボタンを押すと時刻が入り直ります。</span>
+    </div>
   </div>
   <div class="card noprint">
     <div class="btns">
