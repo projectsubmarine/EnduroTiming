@@ -28,6 +28,7 @@ button.p:hover{background:#174ead}
 button.d{color:var(--warn)}
 button.s{padding:3px 8px;font-size:12px}
 .hint{font-size:12px;color:var(--muted)}
+input.sp{width:120px;padding:4px 6px}
 .info{font-size:13px;padding:6px 0;min-height:1.6em}
 .info .ok{color:var(--ok)}.info .ng{color:var(--warn)}
 .tw{overflow-x:auto}

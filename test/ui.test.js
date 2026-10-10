@@ -196,6 +196,53 @@ test('クラスの出走順：①の参加クラス設定（結果表の表示�
   assert.deepEqual(ui.errors, []);
 });
 
+test('スタート時刻の自動入力：クラスごとの1番走者の時刻＋間隔で、出走順どおりに③の記録へ入る', { skip: !JSDOM && 'jsdom 未インストール（npm install）' }, () => {
+  const ui = open();
+  ui.rider('101', 'イチ', 'IA'); ui.rider('102', 'ニ', 'IA'); ui.rider('201', 'ビー', 'IB'); ui.rider('301', 'エヌ', 'NB');
+  ui.w.renderStartList();
+  const all = s => [...ui.w.document.querySelectorAll(s)];
+  const setPlan = (i, k, v) => { const el = all(`#startClsTable input[data-k="${k}"]`)[i]; el.value = v; ui.w.setStartPlan(el); return el; };
+
+  ui.$('#btnStartPlan').click(); // 何も設定していない → 案内のみ
+  assert.equal(ui.alerts.length, 1); assert.equal(ui.state().runs.length, 0);
+
+  setPlan(0, 'first', '１０：００'); setPlan(0, 'interval', '30');
+  setPlan(1, 'first', '10:10:00'); setPlan(1, 'interval', '1:00');
+  const bad = setPlan(2, 'first', '25:00'); // 不正 → 保存されず赤枠
+  assert.ok(bad.classList.contains('bad'));
+  assert.deepEqual(ui.state().startPlan.classes, { IA: { first: 36000000, interval: 30000 }, IB: { first: 36600000, interval: 60000 } });
+  ui.$('#btnStartPlan').click(); // 赤枠が残っている間は実行しない
+  assert.equal(ui.state().runs.length, 0);
+  setPlan(2, 'first', '');
+
+  ui.time('102', '1', '9:00', '9:05'); // 既に別のスタート時刻がある → 上書き確認（confirmはtrue）。ゴールは残る
+  ui.$('#btnStartPlan').click();
+  const S = ui.state(), bib = u => S.riders.find(r => r.uid === u).bib;
+  const got = Object.fromEntries(S.runs.map(x => [bib(x.rider), [x.sec, x.start, x.goal, x.status]]));
+  assert.deepEqual(got, {
+    101: ['1', 36000000, null, 'OK'], 102: ['1', 36030000, 32700000, 'OK'], 201: ['1', 36600000, null, 'OK'],
+  }); // 設定の無いNBには入らない
+  const rows = all('#sTable tr').map(r => [...r.cells].map(c => c.textContent.trim()));
+  assert.equal(rows[0][1], 'スタート時刻（S1）');
+  assert.deepEqual(rows.slice(1).map(r => [r[1], r[2]]), [['10:00:00.00', '101'], ['10:00:30.00', '102'], ['10:10:00.00', '201'], ['', '301']]);
+
+  // 出走順を入れ替えて押し直すと、時刻が入り直る。別セクションを指定すればそのセクションに入る
+  ui.w.moveStart(S.startOrder[1], -1);
+  ui.$('#sp_sec').value = '２'; ui.fire('#sp_sec', 'change');
+  ui.$('#btnStartPlan').click();
+  const S2 = ui.state();
+  assert.equal(S2.startPlan.sec, '2');
+  assert.deepEqual(S2.runs.filter(x => x.sec === '2').map(x => [bib(x.rider), x.start]).sort(), [['101', 36030000], ['102', 36000000], ['201', 36600000]]);
+  assert.equal(S2.runs.filter(x => x.sec === '1').length, 3);
+
+  // クラス名を変更しても設定は引き継がれる。設定の無い旧バックアップも読み込める
+  ui.w.prompt = () => 'エキスパート'; ui.w.renameCls(0);
+  assert.deepEqual(Object.keys(ui.state().startPlan.classes).sort(), ['IB', 'エキスパート']);
+  const old = ui.state(); delete old.startPlan;
+  ui.w.localStorage.setItem('raceTimer_v1', JSON.stringify(old)); ui.w.load(); ui.w.renderStartList();
+  assert.deepEqual(ui.errors, []);
+});
+
 test('CSV取り込み：列の対応付けで氏名・読み仮名を取り込む（BIB・クラスは未設定のまま）', { skip: !JSDOM && 'jsdom 未インストール（npm install）' }, () => {
   const ui = open();
   const rows = [

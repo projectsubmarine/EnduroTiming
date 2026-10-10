@@ -295,3 +295,71 @@ test('entriesFromRuns → runsFromEntries で元の runs に戻る', () => {
   const back = C.runsFromEntries(ents, RD).runs;
   assert.deepEqual(back.map(({ uid, ...x }) => x), runs.map(({ uid, ...x }) => x));
 });
+
+test('parseInterval / fmtInterval: 秒・分:秒・全角・不正', () => {
+  assert.equal(C.parseInterval('30'), 30000);
+  assert.equal(C.parseInterval('３０'), 30000);
+  assert.equal(C.parseInterval('30.5'), 30500);
+  assert.equal(C.parseInterval('1:00'), 60000);
+  assert.equal(C.parseInterval('1:30.25'), 90250);
+  assert.equal(C.parseInterval('90'), 90000);
+  assert.equal(C.parseInterval('0'), 0);
+  assert.equal(C.parseInterval(''), null);
+  assert.ok(Number.isNaN(C.parseInterval('1:75')));
+  assert.ok(Number.isNaN(C.parseInterval('abc')));
+  assert.ok(Number.isNaN(C.parseInterval('-5')));
+  assert.equal(C.fmtInterval(30000), '30');
+  assert.equal(C.fmtInterval(30500), '30.5');
+  assert.equal(C.fmtInterval(90000), '1:30');
+  assert.equal(C.fmtInterval(null), '');
+});
+
+test('planStartTimes: クラスごとに1番走者の時刻＋間隔で、出走順どおりに割り当てる', () => {
+  const st = {
+    riders: [
+      { uid: 'a', bib: '101', cls: 'IA' }, { uid: 'b', bib: '102', cls: 'IA' }, { uid: 'c', bib: '103', cls: 'IA' },
+      { uid: 'd', bib: '201', cls: 'IB' }, { uid: 'e', bib: '202', cls: 'IB' },
+      { uid: 'f', bib: '301', cls: 'NB' },   // 設定なしのクラス → 対象外
+      { uid: 'g', bib: '901', cls: '' },     // クラス未設定
+    ],
+    startOrder: ['b', 'a', 'd', 'c', 'e', 'f', 'g', 'zzz'], // IAは手動入替済み（102が先頭）。存在しないuidは無視
+    startPlan: { sec: '1', classes: {
+      IA: { first: T(10, 0, 0), interval: 30000 },
+      IB: { first: T(10, 10, 0), interval: 60000 },
+      NB: { first: T(11, 0, 0), interval: null },       // 片方だけ → 対象外
+      [C.NOCLS]: { first: T(23, 59, 30), interval: 60000 },
+    } },
+  };
+  assert.deepEqual(C.planStartTimes(st), [
+    { rider: 'b', start: T(10, 0, 0) },
+    { rider: 'a', start: T(10, 0, 30) },
+    { rider: 'd', start: T(10, 10, 0) },
+    { rider: 'c', start: T(10, 1, 0) },
+    { rider: 'e', start: T(10, 11, 0) },
+    { rider: 'g', start: T(23, 59, 30) },
+  ]);
+  // 24時をまたぐ場合は0時からの時刻に折り返す
+  st.riders.push({ uid: 'h', bib: '902', cls: '' }); st.startOrder.push('h');
+  assert.equal(C.planStartTimes(st).at(-1).start, T(0, 0, 30));
+  assert.deepEqual(C.planStartTimes({ riders: st.riders, startOrder: st.startOrder }), []); // 設定なし
+});
+
+test('applyStartTimes: 新規追加・空欄への入力・上書き・同値を数え、ゴール等は残す', () => {
+  const runs = [
+    { uid: 'r1', rider: 'a', sec: '1', start: null, goal: T(10, 5, 0), status: 'OK', note: 'メモ' },
+    { uid: 'r2', rider: 'b', sec: '1', start: T(9, 0, 0), goal: null, status: 'DNS', note: '' },
+    { uid: 'r3', rider: 'c', sec: '1', start: T(10, 1, 0), goal: null, status: 'OK', note: '' },
+    { uid: 'r4', rider: 'd', sec: '2', start: T(11, 0, 0), goal: null, status: 'OK', note: '' }, // 別セクション
+  ];
+  const list = [
+    { rider: 'a', start: T(10, 0, 0) }, { rider: 'b', start: T(10, 0, 30) },
+    { rider: 'c', start: T(10, 1, 0) }, { rider: 'd', start: T(10, 1, 30) },
+  ];
+  const r = C.applyStartTimes(runs, list, '1', mkUidSeq());
+  assert.deepEqual([r.added, r.filled, r.overwritten, r.unchanged], [1, 1, 1, 1]);
+  assert.deepEqual(r.runs[0], { uid: 'r1', rider: 'a', sec: '1', start: T(10, 0, 0), goal: T(10, 5, 0), status: 'OK', note: 'メモ' });
+  assert.equal(r.runs[1].start, T(10, 0, 30)); assert.equal(r.runs[1].status, 'DNS');
+  assert.equal(r.runs[3].start, T(11, 0, 0)); // 別セクションは変更しない
+  assert.deepEqual(r.runs[4], { uid: 'new1', rider: 'd', sec: '1', start: T(10, 1, 30), goal: null, status: 'OK', note: '' });
+  assert.equal(runs[0].start, null); // 元のrunsは変更しない
+});

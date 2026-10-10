@@ -194,3 +194,46 @@ test('オンライン：ゴール端末は自分のセクション以外には�
   assert.ok(g.$('#g_list').textContent.includes('未送信'));
   assert.deepEqual(hq.errors, []); assert.deepEqual(g.errors, []);
 });
+
+test('オンライン：スタート時刻の自動入力は entries への追記になり、ゴール記録を残したまま反映される', { skip }, async () => {
+  const srv = fakeServer();
+  const hq = open('index.html', srv.client({ uid: 'admin1', email: 'hq@example.com' }));
+  const S = () => JSON.parse(hq.w.localStorage.getItem('raceTimer_v1'));
+  hq.$('#cls_name').value = 'IA'; hq.$('#cls_digit').value = '1'; hq.submit('#clsForm');
+  for (const [bib, name] of [['101', '太郎'], ['102', '次郎'], ['103', '三郎']]) {
+    hq.$('#r_bib').value = bib; hq.$('#r_name').value = name; hq.$('#r_cls').value = 'IA'; hq.submit('#rForm');
+  }
+  hq.w.olLogin(); await settle();
+  hq.w.olCreate(); await settle();
+  const eid = Object.keys(srv.ev)[0];
+  const time = (bib, st, gl) => { hq.$('#t_bib').value = bib; hq.$('#t_sec').value = '1'; hq.$('#t_start').value = st; hq.$('#t_goal').value = gl; hq.submit('#tForm'); };
+  time('102', '', '10:06:00');          // ゴールだけ入っている
+  time('103', '9:00:00', '9:05:00');    // 別のスタート時刻が入っている → 上書き（fix）
+  await settle();
+  const before = srv.ev[eid].entries.length;
+
+  hq.w.renderStartList();
+  const inp = k => hq.w.document.querySelector(`#startClsTable input[data-k="${k}"]`);
+  inp('first').value = '10:00:00'; hq.w.setStartPlan(inp('first'));
+  inp('interval').value = '30'; hq.w.setStartPlan(inp('interval'));
+  hq.$('#btnStartPlan').click(); await settle();
+
+  const added = srv.ev[eid].entries.slice(before);
+  assert.deepEqual(added.map(e => [e.bib, e.sec, e.start, !!e.fix, 'goal' in e, 'status' in e]), [
+    ['101', '1', T(10, 0, 0), false, false, false],
+    ['102', '1', T(10, 0, 30), false, false, false],
+    ['103', '1', T(10, 1, 0), true, false, false],
+  ]);
+  const bib = u => S().riders.find(r => r.uid === u).bib;
+  assert.deepEqual(S().runs.map(x => [bib(x.rider), x.start, x.goal]).sort(), [
+    ['101', T(10, 0, 0), null], ['102', T(10, 0, 30), T(10, 6, 0)], ['103', T(10, 1, 0), T(9, 5, 0)],
+  ]);
+  assert.deepEqual([...hq.w.document.querySelectorAll('#sTable tr')].slice(1).map(r => r.cells[1].textContent), ['10:00:00.00', '10:00:30.00', '10:01:00.00']);
+
+  // もう一度押しても、同じ時刻なら何も送らない。設定は名簿と一緒にサーバーへ送られる
+  hq.$('#btnStartPlan').click(); await settle();
+  assert.equal(srv.ev[eid].entries.length, before + 3);
+  await new Promise(r => setTimeout(r, 900)); await settle();
+  assert.deepEqual(JSON.parse(JSON.stringify(srv.ev[eid].roster.startPlan)), { sec: '1', classes: { IA: { first: T(10, 0, 0), interval: 30000 } } });
+  assert.deepEqual(hq.errors, []);
+});

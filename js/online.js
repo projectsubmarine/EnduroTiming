@@ -3,7 +3,7 @@
  * 画面には触れない。ブラウザでは window.Online。
  *
  * Firestore の構成（詳細は firestore.rules）:
- *   events/{eid}                { admins:[uid], roster:{event,settings,classes,riders,startOrder,startClassOrder}, updatedAt }
+ *   events/{eid}                { admins:[uid], roster:{event,settings,classes,riders,startOrder,startClassOrder,startPlan}, updatedAt }
  *   events/{eid}/private/pins   { pins:{ [sec]: 'PIN' } }        本部のみ読み書き
  *   events/{eid}/devices/{uid}  { sec, pin, label, createdAt }   ゴール端末の登録（PINが正しい場合のみ作成できる）
  *   events/{eid}/entries/{id}   入力記録（追記のみ）。runs は Core.runsFromEntries() で組み立てる
