@@ -44,9 +44,11 @@ const uint8_t PIN_DISP_CS    = 9;  // 表示器チェーンのCS/LOAD（3台共�
 const uint8_t PIN_GPS_LED_NG = 10; // GPS受信注意LED（赤。+抵抗、GND側へ）
 
 // LedControlのデバイス番号（Arduinoに近い側から0,1,2。README.mdの配線図参照）
-const uint8_t DISP_LATEST = 0;   // 最新通過時刻
-const uint8_t DISP_PREV   = 1;   // ひとつ前の通過時刻
-const uint8_t DISP_CLOCK  = 2;   // 現在時刻
+// 表示器は上から「現在時刻／最新通過時刻／ひとつ前の通過時刻」の順に並べる
+// （＝数珠つなぎの一番遠い台が一番上、Arduinoに一番近い台が一番下）。
+const uint8_t DISP_CLOCK  = 2;   // 現在時刻（上）
+const uint8_t DISP_LATEST = 1;   // 最新通過時刻（中）
+const uint8_t DISP_PREV   = 0;   // ひとつ前の通過時刻（下）
 
 const uint8_t DISP_COUNT    = 3;
 const uint8_t DISP_BRIGHT   = 8;    // 表示の明るさ（0〜15。屋外なら明るめ推奨）
