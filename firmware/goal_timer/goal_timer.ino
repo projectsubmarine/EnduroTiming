@@ -11,7 +11,8 @@
  * レース計時集計ツール（index.html）の「③タイム入力」に手入力する。
  * このマイコンはPCやネットワークには一切接続しない（配線は電源とセンサ・GPS・表示器のみ）。
  *
- * 表示形式："HHMMSSff"（8桁、6桁目の右に小数点灯）→ 見た目は "100523.45"
+ * 通過時刻の表示形式："HHMMSSff"（8桁、6桁目の右に小数点灯）→ 見た目は "100523.45"
+ * （現在時刻は秒までの "HHMMSS"。右の2桁は消灯）
  * これはレース計時集計ツールのタイム入力欄がそのまま受け付ける形式なので、
  * 表示されている数字をそのまま（小数点を含めて）入力すればよい。
  *
@@ -58,7 +59,7 @@ const unsigned long PPS_MIN_MS    = 950;  // 1PPSの間隔がこの範囲なら�
 const unsigned long PPS_MAX_MS    = 1050;
 const unsigned long PPS_MATCH_MS  = 950;  // 文が届いたとき、これ以内に来ていたパルスを「その文の秒の始まり」とみなす
 const unsigned long PPS_LOST_MS   = 3000; // これだけパルスで合わせられなければ、文だけで合わせる方式に戻す
-const unsigned long CLOCK_TICK_MS = 100;  // 現在時刻表示の更新間隔
+const unsigned long CLOCK_TICK_MS = 10;   // 現在時刻の秒が変わったかを確かめる間隔
 const unsigned long HDOP_OK       = 500;  // HDOP(精度の目安)がこれ以下(×100した整数)なら測位良好とみなす。生値5.0=500
 
 const uint32_t DAY_MS = 86400000UL;
@@ -182,6 +183,20 @@ void showTime(uint8_t dev, uint32_t msOfDay) {
   }
 }
 
+// 現在時刻用：「HHMMSS」を左から6桁に表示する（秒まで。右の2桁は消灯、小数点なし）。
+// 桁の位置は通過時刻の表示とそろえてあるので、上下に並べたときに時・分・秒が同じ位置に来る。
+void showClock(uint8_t dev, uint32_t msOfDay) {
+  uint32_t totalSec = msOfDay / 1000UL;
+  uint8_t hh = (totalSec / 3600UL) % 24;
+  uint8_t mm = (totalSec / 60UL) % 60UL;
+  uint8_t ss = totalSec % 60UL;
+  uint8_t d[6] = { (uint8_t)(hh/10), (uint8_t)(hh%10), (uint8_t)(mm/10), (uint8_t)(mm%10),
+                   (uint8_t)(ss/10), (uint8_t)(ss%10) };
+  for (uint8_t i = 0; i < 6; i++) lc.setDigit(dev, 7 - i, d[i], false);
+  lc.setRow(dev, 1, 0x00);
+  lc.setRow(dev, 0, 0x00);
+}
+
 void showBlank(uint8_t dev) {
   for (uint8_t i = 0; i < 8; i++) lc.setRow(dev, i, 0x00);
 }
@@ -280,10 +295,17 @@ void loop() {
     interrupts();
   }
 
-  // --- 現在時刻表示（一定間隔で更新） ---
+  // --- 現在時刻表示（秒まで。秒が変わったときだけ書き換える） ---
   static unsigned long lastClockAt = 0;
+  static uint32_t shownSec = 0xFFFFFFFFUL;
   if (!gpsBusy && millis() - lastClockAt >= CLOCK_TICK_MS) {
     lastClockAt = millis();
-    if (timeSynced) showTime(DISP_CLOCK, currentMsOfDay());
+    if (timeSynced) {
+      uint32_t nowMs = currentMsOfDay();
+      if (nowMs / 1000UL != shownSec) {
+        shownSec = nowMs / 1000UL;
+        showClock(DISP_CLOCK, nowMs);
+      }
+    }
   }
 }
