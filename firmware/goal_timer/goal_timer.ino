@@ -19,6 +19,8 @@
  *   - TinyGPSPlus（Mikal Hart）
  *   - LedControl（Eberhard Fahle）
  *
+ * 時刻合わせ：GPSの1PPS信号（秒の始まりのパルス）を基準にする。1PPSが無いと時計が0.4秒ほど遅れる。
+ *
  * 対象ボード：Arduino Nano / Uno など ATmega328P系（5V・16MHz）
  * 配線・部品は firmware/goal_timer/README.md を参照。
  */
@@ -31,6 +33,7 @@
 // ピン設定（README.md の配線表と対応させること）
 // ------------------------------------------------------------------
 const uint8_t PIN_SENSOR     = 2;  // 光電センサ出力（D2/D3のみ割り込み対応。センサ検知でLOWになる前提＝INPUT_PULLUP）
+const uint8_t PIN_GPS_PPS    = 3;  // GPSモジュールの1PPS（秒の始まりを示す1秒ごとのパルス。D2/D3のみ割り込み対応）
 const uint8_t PIN_GPS_LED_OK = 4;  // GPS受信良好LED（緑。+抵抗、GND側へ）
 const uint8_t PIN_GPS_RX     = 5;  // ArduinoのRX ← GPSモジュールのTXへ接続
 const uint8_t PIN_GPS_TX     = 6;  // ArduinoのTX → GPSモジュールのRXへ接続（受信専用なら未配線でも可）
@@ -47,12 +50,19 @@ const uint8_t DISP_CLOCK  = 2;   // 現在時刻
 const uint8_t DISP_COUNT    = 3;
 const uint8_t DISP_BRIGHT   = 8;    // 表示の明るさ（0〜15。屋外なら明るめ推奨）
 const unsigned long GPS_BAUD      = 9600;
-const unsigned long DEBOUNCE_MS   = 300;  // センサの誤multiple検知を防ぐ最短間隔（連続通過の想定間隔に応じて調整）
+const unsigned long DEBOUNCE_MS   = 300;  // 検知が終わってからこの時間、信号が無ければ次の通過を受け付ける（連続通過の想定間隔に応じて調整）
 const unsigned long GPS_STALE_MS  = 2000; // これより古いGPS時刻情報は同期に使わない
+const unsigned long GPS_FIX_STALE_MS = 3000; // 位置情報がこれより古ければ「受信不良」とみなす（アンテナを覆ったとき等）
+const unsigned long GPS_QUIET_MS  = 20;   // これだけ何も届かなければ、GPSの受信が一段落したとみなす
+const unsigned long PPS_MIN_MS    = 950;  // 1PPSの間隔がこの範囲なら正しいパルスとみなす（ノイズ除け）
+const unsigned long PPS_MAX_MS    = 1050;
+const unsigned long PPS_MATCH_MS  = 950;  // 文が届いたとき、これ以内に来ていたパルスを「その文の秒の始まり」とみなす
+const unsigned long PPS_LOST_MS   = 3000; // これだけパルスで合わせられなければ、文だけで合わせる方式に戻す
 const unsigned long CLOCK_TICK_MS = 100;  // 現在時刻表示の更新間隔
 const unsigned long HDOP_OK       = 500;  // HDOP(精度の目安)がこれ以下(×100した整数)なら測位良好とみなす。生値5.0=500
 
 const uint32_t DAY_MS = 86400000UL;
+const uint32_t TZ_OFFSET_MS = 9UL * 3600000UL; // GPSの時刻（UTC）に足す時差。日本時間＝+9時間
 
 SoftwareSerial gpsSerial(PIN_GPS_RX, PIN_GPS_TX);
 TinyGPSPlus gps;
@@ -65,23 +75,58 @@ bool timeSynced = false;
 uint32_t syncedMsOfDay  = 0;
 unsigned long syncedAtMillis = 0;
 
+// --- 1PPS（秒の始まりのパルス） ---
+// GPSの文（NMEA）は、その秒が始まってから0.25〜0.4秒ほど遅れて届く。文が届いた瞬間で時計を合わせると
+// その分だけ時計が遅れるので、秒の始まりちょうどに出る1PPSの瞬間を基準にし、文は
+// 「そのパルスが何時何分何秒か」を知るためだけに使う。
+// 秋月 AE-GYSFDMAXB の1PPS端子は、秒の始まりでLOWに下がる（実測）ので、立ち下がりで割り込む。
+// 1PPSが来ていない間（未配線・測位前）は、文が届いた瞬間で合わせる（遅れたまま）。
+volatile unsigned long ppsAtMillis = 0; // 最後のパルスが来た瞬間の millis()
+volatile bool ppsValid = false;         // そのパルスが、前のパルスからほぼ1秒後に来た正しいものか
+bool ppsSynced = false;                 // true＝1PPSで合わせている
+unsigned long lastPpsSyncAt = 0;
+
 // --- センサ検知 ---
-volatile bool sensorFired = false;
-unsigned long lastTriggerAt = 0;
+// 1回の通過を1回だけ記録するため、いったん記録したら、信号が「検知していない状態」のまま
+// DEBOUNCE_MS 続くまで次を受け付けない（センサが検知しっぱなし・出力のばたつき・
+// 自転車の前輪と後輪で光が2回切れる、のどれも1回の通過として扱える）。
+volatile bool armed = true;               // true＝次の通過を受け付けられる
+volatile bool sensorFired = false;        // 新しい通過を検知した（loop()で記録・表示する）
+volatile unsigned long firedAtMillis = 0; // その通過の最初の信号が入った瞬間の millis()
+volatile unsigned long lastEdgeAt = 0;    // 最後に信号が入った millis()（受け付け再開の判定用）
 
 bool hasLatest = false, hasPrev = false;
 uint32_t latestMsOfDay = 0, prevMsOfDay = 0;
 
 void onSensorInterrupt() {
-  // 割り込み内は最小限（フラグを立てるだけ）。デバウンスや表示更新はloop()側で行う。
-  sensorFired = true;
+  // 割り込み内は最小限（時刻の控えとフラグだけ）。記録や表示更新はloop()側で行う。
+  // 通過の瞬間の millis() をここで控えるので、loop()側の処理（表示更新など）で時刻が遅れない。
+  unsigned long now = millis();
+  lastEdgeAt = now;
+  if (armed) {
+    armed = false;
+    firedAtMillis = now;
+    sensorFired = true;
+  }
+}
+
+void onPpsInterrupt() {
+  unsigned long now = millis();
+  unsigned long interval = now - ppsAtMillis;
+  ppsValid = (interval >= PPS_MIN_MS && interval <= PPS_MAX_MS);
+  ppsAtMillis = now;
+}
+
+// millis() の値 at の時点の時刻（0時からのミリ秒）を返す
+uint32_t msOfDayAt(unsigned long at) {
+  if (!timeSynced) return 0;
+  // at が直近の同期よりわずかに前（検知の直後にGPS同期が入った場合）でも正しく計算できるよう、差は符号付きで扱う
+  int32_t delta = (int32_t)(at - syncedAtMillis);
+  return (uint32_t)(syncedMsOfDay + DAY_MS + delta) % DAY_MS; // 日付をまたいだら0時に戻す
 }
 
 uint32_t currentMsOfDay() {
-  if (!timeSynced) return 0;
-  uint32_t t = syncedMsOfDay + (millis() - syncedAtMillis);
-  if (t >= DAY_MS) t %= DAY_MS; // 日付をまたいだら0時に戻す
-  return t;
+  return msOfDayAt(millis());
 }
 
 void syncFromGps() {
@@ -91,13 +136,33 @@ void syncFromGps() {
                + (uint32_t)gps.time.minute() * 60UL
                + (uint32_t)gps.time.second()) * 1000UL
                + (uint32_t)gps.time.centisecond() * 10UL;
-  syncedMsOfDay  = ms;
-  syncedAtMillis = millis();
-  timeSynced = true;
+  ms = (ms + TZ_OFFSET_MS) % DAY_MS; // UTC → 日本時間
+
+  unsigned long now = millis();
+  noInterrupts();
+  unsigned long ppsAt = ppsAtMillis;
+  bool valid = ppsValid;
+  interrupts();
+
+  if (valid && now - ppsAt < PPS_MATCH_MS) {
+    // この文の時刻は、直前のパルスの瞬間の時刻
+    syncedMsOfDay  = ms;
+    syncedAtMillis = ppsAt;
+    timeSynced = true;
+    ppsSynced = true;
+    lastPpsSyncAt = now;
+  } else if (!ppsSynced || now - lastPpsSyncAt > PPS_LOST_MS) {
+    // パルスが来ていない：文が届いた瞬間で合わせる（その分だけ時計は遅れる）
+    syncedMsOfDay  = ms;
+    syncedAtMillis = now;
+    timeSynced = true;
+    ppsSynced = false;
+  }
 }
 
 bool gpsFixGood() {
   if (!gps.location.isValid() || !timeSynced) return false;
+  if (gps.location.age() > GPS_FIX_STALE_MS) return false; // 測位できなくなっている
   if (!gps.hdop.isValid()) return true; // HDOPが得られない機種でも、位置・時刻が有効なら良好とみなす
   return gps.hdop.value() <= HDOP_OK;
 }
@@ -134,7 +199,15 @@ void setup() {
   digitalWrite(PIN_GPS_LED_NG, LOW);
   attachInterrupt(digitalPinToInterrupt(PIN_SENSOR), onSensorInterrupt, FALLING);
 
+  pinMode(PIN_GPS_PPS, INPUT_PULLUP); // 未配線のときにノイズで誤動作しないよう、内蔵プルアップでHIGHに固定しておく
+  attachInterrupt(digitalPinToInterrupt(PIN_GPS_PPS), onPpsInterrupt, FALLING);
+
   gpsSerial.begin(GPS_BAUD);
+  // GPSモジュールが出す文を RMC と GGA の2種類だけに絞る（時刻・測位状態・HDOPはこの2つで足りる）。
+  // 初期設定のままだと毎秒の文字数が多すぎて、ソフトウェアシリアルの受信が追いつかず取りこぼす。
+  // 電源を切ると設定は元に戻るので、起動のたびに送る（MediaTek系のGPS用のコマンド。D6→RXD が未配線なら何も起きない）。
+  delay(500);
+  gpsSerial.print(F("$PMTK314,0,1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0*28\r\n"));
 
   for (uint8_t i = 0; i < DISP_COUNT; i++) {
     lc.shutdown(i, false);
@@ -148,10 +221,17 @@ void setup() {
 
 void loop() {
   // --- GPSデータを読み進める ---
+  static unsigned long lastRxAt = 0;
   while (gpsSerial.available()) {
     gps.encode(gpsSerial.read());
+    lastRxAt = millis();
   }
   if (gps.time.isUpdated()) syncFromGps();
+  // GPSの文を受信している最中は、ソフトウェアシリアルの受信処理にCPUをほぼ取られる。
+  // その間に表示の更新など時間のかかる処理をすると受信バッファがあふれて文が欠けるので、
+  // 受信が一段落する（GPS_QUIET_MS のあいだ何も届かない）まで後回しにする。
+  // 通過の時刻は割り込みの中で控えてあるので、表示が少し遅れても記録される時刻は変わらない。
+  bool gpsBusy = (millis() - lastRxAt < GPS_QUIET_MS);
 
   // --- GPS測位状態LED：緑＝受信良好、赤＝問題あり ---
   // 赤は状況によって点滅／点灯を使い分ける：
@@ -175,14 +255,15 @@ void loop() {
     }
   }
 
-  // --- センサ検知（デバウンス付き） ---
-  if (sensorFired) {
+  // --- センサ検知：新しい通過を記録・表示 ---
+  if (sensorFired && !gpsBusy) {
+    noInterrupts();
     sensorFired = false;
-    unsigned long now = millis();
-    if (timeSynced && (now - lastTriggerAt > DEBOUNCE_MS)) {
-      lastTriggerAt = now;
+    unsigned long at = firedAtMillis;
+    interrupts();
+    if (timeSynced) {
       if (hasLatest) { prevMsOfDay = latestMsOfDay; hasPrev = true; }
-      latestMsOfDay = currentMsOfDay();
+      latestMsOfDay = msOfDayAt(at);
       hasLatest = true;
       showTime(DISP_LATEST, latestMsOfDay);
       if (hasPrev) showTime(DISP_PREV, prevMsOfDay);
@@ -190,9 +271,18 @@ void loop() {
     // timeSynced==false（GPS同期前）の通過は記録できない。赤LEDが点滅中は計測開始前と分かる。
   }
 
+  // --- 受け付けの再開：検知していない状態が DEBOUNCE_MS 続いたら次の通過を受け付ける ---
+  if (!armed) {
+    unsigned long now = millis();
+    noInterrupts();
+    if (digitalRead(PIN_SENSOR) == LOW) lastEdgeAt = now; // まだ検知中
+    if (now - lastEdgeAt >= DEBOUNCE_MS) armed = true;
+    interrupts();
+  }
+
   // --- 現在時刻表示（一定間隔で更新） ---
   static unsigned long lastClockAt = 0;
-  if (millis() - lastClockAt >= CLOCK_TICK_MS) {
+  if (!gpsBusy && millis() - lastClockAt >= CLOCK_TICK_MS) {
     lastClockAt = millis();
     if (timeSynced) showTime(DISP_CLOCK, currentMsOfDay());
   }
