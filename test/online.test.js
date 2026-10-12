@@ -237,3 +237,70 @@ test('オンライン：スタート時刻の自動入力は entries への追�
   assert.deepEqual(JSON.parse(JSON.stringify(srv.ev[eid].roster.startPlan)), { sec: '1', classes: { IA: { first: T(10, 0, 0), interval: 30000 } } });
   assert.deepEqual(hq.errors, []);
 });
+
+test('オンライン：計測端末の画面の流れ（ライダーを選ぶ → 確認 → 時刻 → 次のライダー）', { skip }, async () => {
+  const srv = fakeServer();
+  const hq = open('index.html', srv.client({ uid: 'admin1', email: 'hq@example.com' }));
+  for (const [bib, name] of [['101', '太郎'], ['102', '次郎']]) { hq.$('#r_bib').value = bib; hq.$('#r_name').value = name; hq.submit('#rForm'); }
+  hq.w.olLogin(); await settle(); hq.w.olCreate(); await settle();
+  const eid = Object.keys(srv.ev)[0];
+  hq.prompts.push('1'); hq.w.olAddSection(); await settle();
+  const g = open('goal.html', srv.client({}), `http://localhost/goal.html?e=${eid}`); await settle();
+  g.$('#s_sec').value = '1'; g.$('#s_pin').value = '123456'; g.$('#s_label').value = 'S1ゴール'; g.submit('#setupForm'); await settle();
+  let confirms = 0; g.w.confirm = () => { confirms++; return true; };
+  const step = () => ['bib', 'ok', 'time'].filter(x => !g.$('#st_' + x).hidden).join();
+  const keys = (id, str) => { for (const k of str) g.$(`.kp[data-for="${id}"] [data-k="${k}"]`).click(); };
+  const goals = () => srv.ev[eid].entries.filter(e => 'goal' in e).map(e => [e.bib, e.goal, !!e.fix]);
+
+  // ①番号で入力：打っている途中（101にも102にもなり得る）は進まず、打ち終えたら自動で②へ
+  assert.equal(step(), 'bib');
+  assert.match(g.$('#g_next').textContent, /101/);
+  assert.equal(g.$('#g_go').disabled, true);
+  keys('g_bib', '10'); assert.equal(step(), 'bib'); assert.equal(g.$('#g_go').disabled, false);
+  keys('g_bib', '1'); assert.equal(step(), 'ok');
+  assert.match(g.$('#g_card').textContent, /101[\s\S]*太郎/);
+  // ②確認 → ③時刻：数字キーで打つと計測器の表示と同じ形（100523.45）になる
+  g.$('#g_yes').click(); assert.equal(step(), 'time');
+  assert.match(g.$('#g_strip').textContent, /太郎/);
+  keys('g_time', '1005'); assert.match(g.$('#g_tview').textContent, /あと 2 桁/);
+  keys('g_time', '2345'); assert.equal(g.$('#g_time').value, '100523.45');
+  assert.match(g.$('#g_tview').textContent, /10:05:23\.45/);
+  g.submit('#gForm'); await settle();
+  assert.deepEqual(goals(), [['101', T(10, 5, 23, 450), false]]);
+  // 登録後は①に戻り、直前の記録（取り消しボタン付き）と次のライダーが出る
+  assert.equal(step(), 'bib'); assert.equal(g.$('#g_bib').value, '');
+  assert.match(g.$('#g_toast').textContent, /太郎[\s\S]*10:05:23\.45/);
+  assert.match(g.$('#g_next').textContent, /102/);
+
+  // スタートリストから選ぶ：未記録のライダーだけが並ぶ。「ちがう」で①に戻る
+  g.$('[data-pick="list"]').click();
+  assert.equal(g.$('#p_list').hidden, false);
+  assert.deepEqual([...g.w.document.querySelectorAll('#g_slist button')].map(b => b.dataset.bib), ['102']);
+  g.$('#g_todo').checked = false; g.$('#g_todo').dispatchEvent(new g.w.Event('change'));
+  assert.deepEqual([...g.w.document.querySelectorAll('#g_slist button')].map(b => b.dataset.bib), ['101', '102']);
+  g.$('#g_slist button[data-bib="102"]').click(); assert.equal(step(), 'ok');
+  assert.match(g.$('#g_card').textContent, /次郎/);
+  g.$('#g_back').click(); assert.equal(step(), 'bib'); assert.equal(g.$('#g_bib').value, '');
+
+  // 名簿にないBIB：自動では進まず、確認画面で「このまま記録」を選べば確認ダイアログは出さない
+  g.$('[data-pick="pad"]').click();
+  keys('g_bib', '150'); assert.equal(step(), 'bib');
+  assert.match(g.$('#g_who').textContent, /名簿にありません/);
+  g.$('#g_go').click(); assert.equal(step(), 'ok');
+  assert.match(g.$('#g_card').textContent, /名簿にないBIB/);
+  g.$('#g_yes').click(); keys('g_time', '101000'); g.submit('#gForm'); await settle();
+  assert.equal(confirms, 0);
+  assert.deepEqual(goals().at(-1), ['150', T(10, 10, 0), false]);
+
+  // 直前の記録を取り消す
+  g.$('#g_undo').click(); await settle();
+  assert.equal(confirms, 1);
+  assert.deepEqual(goals().at(-1), ['150', null, true]);
+  assert.equal(g.$('#g_toast').hidden, true);
+
+  // 入力する場所の切り替え（設定）：上部の表示が変わる
+  g.$('[data-view="etc"]').click(); g.$('[data-mode="start"]').click();
+  assert.equal(g.w.document.body.dataset.mode, 'start');
+  assert.match(g.$('#g_title').textContent, /S1 スタート/);
+  assert.deepEqual(g.errors, []);
+});

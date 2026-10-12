@@ -2,29 +2,120 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ゴール入力</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>通過時刻の入力</title>
 <link rel="stylesheet" href="css/style.css">
 <style>
-  body{font-size:16px}
-  main{max-width:640px;margin:0 auto}
-  .g-head{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:baseline}
-  .g-head h1{font-size:18px;margin:0}
-  .sync{font-size:13px;font-weight:bold}
-  .sync.ok{color:var(--ok)}.sync.ng{color:var(--warn)}
-  .mode{display:flex;gap:6px;margin-bottom:12px}
-  .mode button{flex:1;padding:10px;font-size:16px}
-  .mode button.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:bold}
-  .big input{font-size:24px;padding:10px;font-family:ui-monospace,Menlo,monospace}
-  .big label{font-size:13px}
-  .g-grid{display:grid;grid-template-columns:1fr 1.6fr;gap:10px}
-  .g-who{min-height:1.6em;margin:8px 0;font-size:15px}
-  .g-btns{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
-  .g-btns .p{flex:1 1 100%;padding:14px;font-size:18px}
-  .g-list td{font-size:14px}
-  .pend{color:var(--warn);font-weight:bold}
+  /* スマホで片手・屋外でも押しやすいよう、文字とボタンを大きくしてある（PCでもそのまま使える） */
+  :root{--mode:var(--accent);--mode-soft:var(--accent-soft)}
+  body[data-mode="start"]{--mode:#157f3b;--mode-soft:#e3f4e9}
+  body{font-size:16px;-webkit-text-size-adjust:100%}
+  main{max-width:520px;margin:0 auto;padding:0 0 calc(64px + env(safe-area-inset-bottom))}
+  button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+  #setup,#na{padding:12px}
   #setup label{margin-bottom:10px}
   #setup input{font-size:18px}
+
+  /* 上部：どのセクションの「ゴール／スタート」を入力しているかを常に表示（取り違え防止のため色も変える） */
+  .g-top{position:sticky;top:0;z-index:5;background:var(--mode);color:#fff;padding:8px 12px;display:flex;align-items:center;gap:10px}
+  .g-place{font-size:20px;font-weight:bold;white-space:nowrap}
+  .g-ev{font-size:12px;opacity:.85;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
+  .sync{font-size:12px;font-weight:bold;padding:4px 8px;border-radius:999px;background:#fff;white-space:nowrap}
+  .sync.ok{color:var(--ok)}.sync.ng{color:var(--warn)}
+  #g_warn{padding:0 12px}
+  #g_warn:empty{display:none}
+  #g_warn .ng{color:var(--warn);font-size:13px;padding:6px 0}
+
+  .view{padding:12px}
+  .step h2{font-size:14px;margin:0 0 8px;color:var(--muted);font-weight:normal}
+  .step h2 b{color:var(--ink);font-size:16px}
+
+  /* 直前の記録（取り消しボタン付き） */
+  .toast{display:flex;align-items:center;gap:8px;background:#e9f7ee;border:1px solid #b9e0c6;border-radius:8px;padding:8px 10px;margin-bottom:10px;font-size:14px}
+  .toast span{flex:1;min-width:0}
+  .toast b{display:block;font-size:16px}
+  .toast button{white-space:nowrap}
+  .toast[hidden]{display:none}
+
+  /* 次のライダー（1回押すだけで確認へ進める） */
+  .next{display:flex;align-items:center;gap:10px;width:100%;text-align:left;font:inherit;color:var(--ink);background:var(--mode-soft);
+    border:2px solid var(--mode);border-radius:10px;padding:10px 12px;margin-bottom:10px;cursor:pointer}
+  .next[hidden]{display:none}
+  .next small{display:block;font-size:12px;color:var(--muted)}
+  .next .nb{font-size:30px;font-weight:bold;font-variant-numeric:tabular-nums;line-height:1}
+  .next .nn{flex:1;min-width:0;font-size:17px;font-weight:bold;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .next .go{font-size:22px;color:var(--mode)}
+
+  .seg{display:flex;border:1px solid #c9ced6;border-radius:8px;overflow:hidden;margin-bottom:10px}
+  .seg button{flex:1;border:0;background:#fff;font:inherit;padding:10px 4px;cursor:pointer;color:var(--muted)}
+  .seg button.on{background:var(--mode);color:#fff;font-weight:bold}
+
+  .field{display:block;margin-bottom:6px}
+  .field input{width:100%;font-size:34px;font-weight:bold;text-align:center;padding:8px;font-family:ui-monospace,Menlo,monospace;letter-spacing:.06em;border-width:2px;caret-color:var(--mode)}
+  .field input:focus{outline-color:var(--mode);border-color:var(--mode)}
+  .g-who{min-height:1.6em;font-size:15px;text-align:center}
+  .tview{min-height:1.5em;text-align:center;font-size:20px;font-weight:bold;font-variant-numeric:tabular-nums;margin-bottom:6px}
+  .tview .ok{color:var(--ok)}.tview .ng{color:var(--warn);font-size:14px}.tview .muted{font-size:14px;font-weight:normal}
+
+  /* 数字キー */
+  .kp{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:6px 0 10px}
+  .kp button{font:inherit;font-size:26px;font-weight:bold;padding:0;height:54px;border:1px solid #c9ced6;border-radius:8px;background:#fff;color:var(--ink);cursor:pointer}
+  .kp button:active{background:var(--mode-soft)}
+  .kp button.sub{font-size:15px;font-weight:normal;color:var(--muted);background:#f0f2f5}
+
+  .big{display:block;width:100%;font:inherit;font-size:19px;font-weight:bold;padding:15px 10px;border-radius:10px;border:2px solid var(--mode);background:var(--mode);color:#fff;cursor:pointer}
+  .big:disabled{opacity:.35}
+  .big.alt{background:#fff;color:var(--ink);border-color:#c9ced6;font-weight:normal;font-size:16px;padding:12px 10px;margin-top:8px}
+  .row2{display:flex;gap:8px;margin-top:8px}
+  .row2 > *{flex:1;margin-top:0!important}
+
+  /* スタートリスト */
+  .chip{display:flex;flex-direction:row;align-items:center;gap:8px;font-size:14px;color:var(--ink);margin-bottom:8px}
+  .chip input{width:20px;height:20px}
+  .slist{list-style:none;margin:0;padding:0;border:1px solid var(--line);border-radius:8px;background:#fff;overflow:hidden}
+  .slist li + li{border-top:1px solid var(--line)}
+  .slist button{display:flex;align-items:center;gap:10px;width:100%;text-align:left;font:inherit;color:var(--ink);background:none;border:0;padding:10px 12px;min-height:56px;cursor:pointer}
+  .slist button:active{background:var(--mode-soft)}
+  .slist .sb{font-size:24px;font-weight:bold;font-variant-numeric:tabular-nums;min-width:2.4em}
+  .slist .sn{flex:1;min-width:0}
+  .slist .sn b{display:block;font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .slist .sn small{font-size:12px;color:var(--muted)}
+  .slist .sv{font-size:13px;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+  .slist .done{color:var(--muted)}
+  .slist .done .sb{color:var(--muted)}
+  .slist .empty{padding:14px;color:var(--muted);font-size:14px}
+
+  /* ライダーの確認 */
+  .rcard{border:2px solid var(--mode);border-radius:12px;background:#fff;padding:14px;text-align:center;margin-bottom:12px}
+  .rcard .rb{font-size:64px;font-weight:bold;line-height:1.05;font-variant-numeric:tabular-nums}
+  .rcard .rn{font-size:26px;font-weight:bold;margin-top:4px;overflow-wrap:anywhere}
+  .rcard .rk{font-size:14px;color:var(--muted)}
+  .rcard .rc{display:inline-block;margin-top:8px;padding:3px 12px;border-radius:999px;background:var(--mode-soft);font-size:15px;font-weight:bold}
+  .rcard .rx{margin-top:10px;font-size:14px;color:var(--muted)}
+  .rcard .ng{color:var(--warn);font-weight:bold}
+  .rcard.unknown{border-color:var(--warn)}
+  .strip{display:flex;align-items:baseline;gap:10px;background:var(--mode-soft);border-radius:8px;padding:8px 12px;margin-bottom:8px}
+  .strip b{font-size:24px;font-variant-numeric:tabular-nums}
+  .strip span{flex:1;min-width:0;font-size:16px;font-weight:bold;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+  details.more{margin-top:12px;border:1px solid var(--line);border-radius:8px;background:#fff;padding:8px 12px}
+  details.more summary{font-size:14px;color:var(--muted);cursor:pointer;padding:4px 0}
+  details.more input{width:100%;font-size:16px;margin:6px 0 10px}
+  .st-btns{display:flex;gap:8px}
+  .st-btns button{flex:1;padding:12px 4px;font-size:16px}
+
+  .g-list td,.g-list th{font-size:13px;padding:6px 6px;white-space:normal}
+  .g-list td.nw,.g-list button{white-space:nowrap}
+  .g-list td small{display:block;color:var(--muted);font-size:12px}
+  .pend{color:var(--warn);font-weight:bold}
+  .mode{display:flex;gap:6px;margin-bottom:8px}
+  .mode button{flex:1;padding:12px;font-size:16px}
+  .mode button.on{background:var(--mode);border-color:var(--mode);color:#fff;font-weight:bold}
+
+  /* 下部の切り替え */
+  .g-nav{position:fixed;left:0;right:0;bottom:0;z-index:5;display:flex;background:#fff;border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
+  .g-nav button{flex:1;border:0;background:none;font:inherit;font-size:14px;padding:14px 4px;color:var(--muted);cursor:pointer;border-top:3px solid transparent}
+  .g-nav button.on{color:var(--mode);font-weight:bold;border-top-color:var(--mode)}
 </style>
 </head>
 <body>
@@ -33,7 +124,7 @@
 <!-- 端末の登録（大会前・通信できる場所で） -->
 <section id="setup" hidden>
   <div class="card">
-    <h2>ゴール端末の登録</h2>
+    <h2>計測端末の登録</h2>
     <p class="hint">本部から聞いた「大会コード」「セクション#」「PIN」を入力してください。登録は通信できる場所で、大会前に済ませてください（登録後は通信が途切れても入力できます）。</p>
     <form id="setupForm" autocomplete="off">
       <label>大会コード<input id="s_eid" required autocapitalize="characters"></label>
@@ -47,49 +138,110 @@
   </div>
 </section>
 
-<!-- 入力 -->
 <section id="main" hidden>
-  <div class="card">
-    <div class="g-head">
-      <h1 id="g_title"></h1>
-      <span class="sync" id="g_sync"></span>
-    </div>
-    <div class="hint" id="g_sub"></div>
+  <div class="g-top">
+    <span class="g-place" id="g_title"></span>
+    <span class="g-ev" id="g_ev"></span>
+    <span class="sync" id="g_sync"></span>
   </div>
-  <div class="card">
-    <div class="mode">
-      <button class="b" type="button" data-mode="goal">ゴール</button>
-      <button class="b" type="button" data-mode="start">スタート</button>
-    </div>
-    <form id="gForm" autocomplete="off" class="big">
-      <div class="g-grid">
-        <label>BIB<input id="g_bib" inputmode="numeric" required></label>
-        <label><span id="g_tlabel">ゴール時刻</span><input id="g_time" inputmode="decimal" placeholder="100523.45"></label>
+  <div id="g_warn"></div>
+
+  <!-- 入力：①ライダーを選ぶ → ②ライダーの確認 → ③時刻の入力 をくり返す -->
+  <div class="view" id="v_in">
+    <form id="gForm" autocomplete="off">
+
+      <div class="step" id="st_bib">
+        <div class="toast" id="g_toast" hidden><span id="g_toastText"></span><button class="b s d" type="button" id="g_undo">取り消す</button></div>
+        <button class="next" type="button" id="g_next" hidden></button>
+        <div class="seg">
+          <button type="button" data-pick="pad">番号で入力</button>
+          <button type="button" data-pick="list">スタートリストから</button>
+        </div>
+        <div id="p_pad">
+          <label class="field"><input id="g_bib" inputmode="none" enterkeyhint="next" placeholder="BIB" aria-label="BIBナンバー" maxlength="6"></label>
+          <div class="g-who info" id="g_who"></div>
+          <div class="kp" data-for="g_bib">
+            <button type="button" data-k="1">1</button><button type="button" data-k="2">2</button><button type="button" data-k="3">3</button>
+            <button type="button" data-k="4">4</button><button type="button" data-k="5">5</button><button type="button" data-k="6">6</button>
+            <button type="button" data-k="7">7</button><button type="button" data-k="8">8</button><button type="button" data-k="9">9</button>
+            <button type="button" data-k="clr" class="sub">クリア</button><button type="button" data-k="0">0</button><button type="button" data-k="bs" class="sub">1字消す</button>
+          </div>
+          <button class="big" type="button" id="g_go" disabled>ライダーを確認する</button>
+        </div>
+        <div id="p_list" hidden>
+          <label class="chip"><input type="checkbox" id="g_todo" checked><span id="g_todoLabel">未記録のライダーだけ</span></label>
+          <ul class="slist" id="g_slist"></ul>
+        </div>
       </div>
-      <div class="g-who info" id="g_who"></div>
-      <label>メモ（任意）<input id="g_note" maxlength="200" style="font-size:16px;font-family:inherit"></label>
-      <div class="g-btns">
-        <button class="b p" type="submit">登録</button>
-        <button class="b" type="button" id="g_now">今の時刻を入れる</button>
-        <button class="b d" type="button" data-status="DNF">DNF</button>
-        <button class="b d" type="button" data-status="DNS">DNS</button>
-        <button class="b d" type="button" data-status="DSQ">DSQ</button>
+
+      <div class="step" id="st_ok" hidden>
+        <h2><b>このライダーで合っていますか？</b></h2>
+        <div class="rcard" id="g_card"></div>
+        <button class="big" type="button" id="g_yes">合っている（時刻の入力へ）</button>
+        <button class="big alt" type="button" id="g_back">ちがう（選び直す）</button>
       </div>
-      <p class="hint">時刻は計測器の表示（例 <b>100523.45</b>）をそのまま入力できます。「今の時刻を入れる」はこの端末の時計を使います（計測器より精度が落ちます）。</p>
+
+      <div class="step" id="st_time" hidden>
+        <div class="strip" id="g_strip"></div>
+        <label class="field"><input id="g_time" inputmode="none" enterkeyhint="done" placeholder="100523.45" aria-label="通過時刻"></label>
+        <div class="tview" id="g_tview"></div>
+        <div class="kp" data-for="g_time">
+          <button type="button" data-k="1">1</button><button type="button" data-k="2">2</button><button type="button" data-k="3">3</button>
+          <button type="button" data-k="4">4</button><button type="button" data-k="5">5</button><button type="button" data-k="6">6</button>
+          <button type="button" data-k="7">7</button><button type="button" data-k="8">8</button><button type="button" data-k="9">9</button>
+          <button type="button" data-k="clr" class="sub">クリア</button><button type="button" data-k="0">0</button><button type="button" data-k="bs" class="sub">1字消す</button>
+        </div>
+        <button class="big" type="submit" id="g_submit"><span id="g_tlabel">ゴール時刻</span>を登録</button>
+        <div class="row2">
+          <button class="big alt" type="button" id="g_back2">ライダーを選び直す</button>
+          <button class="big alt" type="button" id="g_now">今の時刻を入れる</button>
+        </div>
+        <details class="more">
+          <summary>DNF・DNS・DSQ／メモ</summary>
+          <input id="g_note" maxlength="200" placeholder="メモ（任意）" aria-label="メモ">
+          <div class="st-btns">
+            <button class="b d" type="button" data-status="DNF">DNF</button>
+            <button class="b d" type="button" data-status="DNS">DNS</button>
+            <button class="b d" type="button" data-status="DSQ">DSQ</button>
+          </div>
+          <p class="hint">時刻は計測器の表示（例 <b>100523.45</b>）を見たまま入力します。「今の時刻を入れる」はこの端末の時計を使うので、計測器より精度が落ちます。</p>
+        </details>
+      </div>
+
     </form>
   </div>
-  <div class="card">
+
+  <!-- 履歴 -->
+  <div class="view" id="v_log" hidden>
     <div class="btns" style="margin-bottom:8px"><strong id="g_count"></strong></div>
-    <div class="info" id="g_warn"></div>
     <div class="tw"><table class="g-list" id="g_list"></table></div>
   </div>
-  <div class="card">
-    <h2>その他</h2>
-    <p class="hint">通信がまったく使えなかったときは、記録をファイルに書き出して本部に渡してください（本部の「データ管理 → セクション記録を取り込む」で読み込めます）。</p>
-    <div class="btns">
-      <button class="b" type="button" id="g_export">記録をファイルに書き出す（.json）</button>
-      <button class="b" type="button" id="g_reset">端末の登録をやり直す</button>
+
+  <!-- 設定 -->
+  <div class="view" id="v_etc" hidden>
+    <div class="card">
+      <h2>入力する場所</h2>
+      <div class="mode">
+        <button class="b" type="button" data-mode="goal">ゴール</button>
+        <button class="b" type="button" data-mode="start">スタート</button>
+      </div>
+      <p class="hint">この端末を置く場所に合わせて選びます。画面上部の色と表示（青＝ゴール／緑＝スタート）で、いまどちらを入力しているかが分かります。</p>
+      <div class="hint" id="g_sub"></div>
     </div>
+    <div class="card">
+      <h2>その他</h2>
+      <p class="hint">通信がまったく使えなかったときは、記録をファイルに書き出して本部に渡してください（本部の「データ管理 → セクション記録を取り込む」で読み込めます）。</p>
+      <div class="btns">
+        <button class="b" type="button" id="g_export">記録をファイルに書き出す（.json）</button>
+        <button class="b" type="button" id="g_reset">端末の登録をやり直す</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="g-nav">
+    <button type="button" data-view="in">入力</button>
+    <button type="button" data-view="log" id="g_navLog">履歴</button>
+    <button type="button" data-view="etc">設定</button>
   </div>
 </section>
 

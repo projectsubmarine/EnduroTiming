@@ -104,6 +104,9 @@ S = {
 各ゴールの端末（`goal.html` / `js/goal.js`）から記録を送り、本部（`index.html`）の結果をリアルタイムに更新する拡張。
 設定・運用手順は `docs/online.md`。**このブランチでも file:// のローカル版としての動作は壊さない**（オンライン機能は https で開き、
 `js/firebase-config.js` が設定されているときだけ有効。SDKは `vendor/firebase/`（compat版・UMD）を必要時に読み込む）。
+- 計測端末（`goal.html`）はスマホ向けの画面。「①ライダーを選ぶ（BIBを画面の数字キーで打つ／スタートリストから選ぶ）→
+  ②ライダーの確認 → ③通過時刻の入力」をくり返す。入力する場所（スタート／ゴール）は「設定」で選ぶ。
+  入力欄は `inputmode="none"` の本物の `<input>`（`#g_bib` / `#g_time`）なので、PCのキーボードやテストからもそのまま打てる。
 - 決定済みの方針：Firebase（Firestore＋Auth＋Hosting）／通信は途切れる前提（オフライン保存＋自動送信）／
   ゴール端末はセクション別6桁PIN＋匿名ログイン、本部はGoogleログイン／結果はスタッフのみ（一般公開しない）。
 - Firestore：`events/{eid}`（`admins`, `roster`＝runs以外のS）、`private/pins`、`devices/{uid}`、`entries/{id}`（**追記のみ**）。

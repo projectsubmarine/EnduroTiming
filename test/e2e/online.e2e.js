@@ -68,7 +68,9 @@ setTimeout(() => { console.error('✖ 失敗：2分以内に終わりません�
     await until(async () => /PIN/.test(await g.textContent('#s_info')));
     await g.fill('#s_pin', pin); await g.click('#s_submit');
     await until(() => g.isVisible('#main'));
-    await g.fill('#g_bib', '101'); await until(async () => /太郎/.test(await g.textContent('#g_who')));
+    // ①BIB（キーボードから）→ ②ライダーの確認 → ③時刻
+    await g.fill('#g_bib', '101'); await until(async () => /太郎/.test(await g.textContent('#g_card')));
+    await g.click('#g_yes');
     await g.fill('#g_time', '100523.45'); await g.press('#g_time', 'Enter');
     await until(async () => /すべて送信済み/.test(await g.textContent('#g_sync')));
     await until(() => g.evaluate(() => !!navigator.serviceWorker.controller)); // ページの保存（sw.js）が有効
@@ -76,7 +78,10 @@ setTimeout(() => { console.error('✖ 失敗：2分以内に終わりません�
     step('電波なし：入力は端末に残り、ページを再読み込みしても開ける');
     // 電波なし：入力は端末に残り、ページを再読み込みしても開ける
     await gctx.setOffline(true);
-    await g.fill('#g_bib', '102'); await g.fill('#g_time', '100630'); await g.press('#g_time', 'Enter');
+    // 画面の数字キーで入力する
+    const keys = async (id, str) => { for (const k of str) await g.click(`.kp[data-for="${id}"] [data-k="${k}"]`); };
+    await keys('g_bib', '102'); await until(() => g.isVisible('#g_yes'));
+    await g.click('#g_yes'); await keys('g_time', '100630'); await g.click('#g_submit');
     await until(async () => /未送信 1 件/.test(await g.textContent('#g_sync')));
     await g.reload(); await until(() => g.isVisible('#main'));
     assert.equal(await g.$$eval('#g_list tr', r => r.length - 1), 2);
